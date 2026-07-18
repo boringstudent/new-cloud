@@ -27,6 +27,7 @@ jobs:
     - name: Run build script
       run: python build.py
       env:
+        APIKEY: ${{ secrets.APIKEY }}
         ADMIN: ${{ secrets.ADMIN }}
         REPO_NAME: ${{ secrets.REPO_NAME }}
 

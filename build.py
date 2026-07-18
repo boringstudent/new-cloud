@@ -4,6 +4,8 @@ import hashlib
 import markdown
 import shutil
 
+GITHUB_APIKEY = os.environ.get('APIKEY', '')
+
 REPO_NAME = os.environ.get('REPO_NAME', '')
 
 GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
@@ -286,12 +288,6 @@ template = """
                     </div>
 
                     <div class="form-group">
-                        <label for="pat-token">GitHub PAT Token</label>
-                        <input type="password" id="pat-token" placeholder="ghp_xxx...">
-                        <div style="font-size: 12px; color: #666; margin-top: 5px;">需要 repo 和 workflow 权限</div>
-                    </div>
-
-                    <div class="form-group">
                         <label for="commit-msg">提交信息</label>
                         <input type="text" id="commit-msg" placeholder="上传文件" value="上传文件 via upload">
                     </div>
@@ -315,6 +311,7 @@ template = """
             const REPO_NAME = '__REPO_NAME__';
             const ADMIN_USER = '__ADMIN_USER__';
             const ADMIN_PASS = '__ADMIN_PASS__';
+            const GITHUB_APIKEY = '__GITHUB_APIKEY__';
 
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
@@ -330,7 +327,6 @@ template = """
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
             const targetPath = document.getElementById('target-path');
-            const patToken = document.getElementById('pat-token');
             const commitMsg = document.getElementById('commit-msg');
             const uploadBtn = document.getElementById('upload-btn');
             const cancelBtn = document.getElementById('cancel-btn');
@@ -437,7 +433,6 @@ template = """
             function uploadFile() {
                 const path = targetPath.value.trim();
                 const message = commitMsg.value.trim() || '上传文件';
-                const token = patToken.value.trim();
 
                 if (!path) {
                     showError('请输入目标路径');
@@ -449,12 +444,7 @@ template = """
                     return;
                 }
 
-                if (!token) {
-                    showError('请输入 GitHub PAT Token');
-                    return;
-                }
-
-                if (!REPO_OWNER || !REPO_NAME) {
+                if (!GITHUB_APIKEY || !REPO_OWNER || !REPO_NAME) {
                     showError('系统配置未完成');
                     return;
                 }
@@ -464,7 +454,7 @@ template = """
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const contentBase64 = e.target.result.split(',')[1];
-                    startUpload(path, message, contentBase64, token);
+                    startUpload(path, message, contentBase64);
                 };
                 reader.onerror = function() {
                     showError('文件读取失败');
@@ -472,7 +462,7 @@ template = """
                 reader.readAsDataURL(file);
             }
 
-            function startUpload(path, message, contentBase64, token) {
+            function startUpload(path, message, contentBase64) {
                 uploadBtn.disabled = true;
                 progressBar.style.display = 'block';
                 updateProgress(5, '正在准备上传...');
@@ -492,7 +482,7 @@ template = """
 
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', url, true);
-                xhr.setRequestHeader('Authorization', 'token ' + token);
+                xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
                 xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
                 xhr.setRequestHeader('Content-Type', 'application/json');
 
@@ -657,6 +647,7 @@ def generate_index_html(root_dir):
 
         index_content = index_content.replace('__ADMIN_USER__', ADMIN_USER)
         index_content = index_content.replace('__ADMIN_PASS__', ADMIN_PASS)
+        index_content = index_content.replace('__GITHUB_APIKEY__', GITHUB_APIKEY)
         index_content = index_content.replace('__REPO_OWNER__', REPO_OWNER)
         index_content = index_content.replace('__REPO_NAME__', REPO_NAME)
 
