@@ -469,19 +469,16 @@ template = """
 
                 updateProgress(20, '正在连接服务器...');
 
-                const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/actions/workflows/upload.yml/dispatches';
+                const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path;
                 
                 const body = {
-                    ref: 'main',
-                    inputs: {
-                        file_path: path,
-                        file_content_base64: contentBase64,
-                        commit_message: message
-                    }
+                    message: message,
+                    content: contentBase64,
+                    branch: 'main'
                 };
 
                 const xhr = new XMLHttpRequest();
-                xhr.open('POST', url, true);
+                xhr.open('PUT', url, true);
                 xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
                 xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
                 xhr.setRequestHeader('Content-Type', 'application/json');
@@ -505,7 +502,7 @@ template = """
                             showSuccess();
                             setTimeout(function() {
                                 window.location.reload();
-                            }, 2000);
+                            }, 3000);
                         } else {
                             let errorMsg = '上传失败';
                             try {
