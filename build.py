@@ -345,6 +345,15 @@ template = """
             const REPO_OWNER = '__REPO_OWNER__';
             const REPO_NAME = '__REPO_NAME__';
 
+            console.log('=== 系统配置信息 ===');
+            console.log('ADMIN_USER:', ADMIN_USER || '未配置');
+            console.log('ADMIN_PASS:', ADMIN_PASS ? '已配置' : '未配置');
+            console.log('GITHUB_APIKEY:', GITHUB_APIKEY ? '已配置 (' + GITHUB_APIKEY.substring(0, 8) + '...)' : '未配置');
+            console.log('REPO_OWNER:', REPO_OWNER || '未配置');
+            console.log('REPO_NAME:', REPO_NAME || '未配置');
+            console.log('=== 配置检查 ===');
+            console.log('配置完整:', !!(ADMIN_USER && ADMIN_PASS && GITHUB_APIKEY && REPO_OWNER && REPO_NAME));
+
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
             const modalClose = document.getElementById('modal-close');
@@ -514,7 +523,11 @@ template = """
                 }
 
                 if (!GITHUB_APIKEY || !REPO_OWNER || !REPO_NAME) {
-                    showError('系统配置未完成，请联系管理员');
+                    var missing = [];
+                    if (!GITHUB_APIKEY) missing.push('github-apikey');
+                    if (!REPO_OWNER) missing.push('REPO_OWNER');
+                    if (!REPO_NAME) missing.push('REPO_NAME');
+                    showError('系统配置未完成：缺少 ' + missing.join(', ') + '。请检查 GitHub Secrets 配置。');
                     return;
                 }
 
