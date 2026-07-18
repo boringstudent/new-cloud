@@ -4,7 +4,17 @@ import hashlib
 import markdown
 import shutil
 
-upload_page = """
+GITHUB_APIKEY = os.environ.get('github-apikey', '')
+ADMIN_CREDENTIALS = os.environ.get('ADMIN', '')
+ADMIN_USER = ''
+ADMIN_PASS = ''
+if ':' in ADMIN_CREDENTIALS:
+    ADMIN_USER, ADMIN_PASS = ADMIN_CREDENTIALS.split(':', 1)
+
+REPO_OWNER = os.environ.get('REPO_OWNER', '')
+REPO_NAME = os.environ.get('REPO_NAME', '')
+
+upload_page_template = """
 <html>
     <head>
         <meta charset="utf-8">
@@ -25,9 +35,9 @@ upload_page = """
                 font-family: Arial, sans-serif;
             }}
             .container {{
-                max-width: 600px;
+                max-width: 800px;
                 margin: 20px auto;
-                background: rgba(255, 255, 255, 0.95);
+                background: rgba(255, 255, 255, 0.9);
                 border-radius: 15px;
                 padding: 30px;
                 box-shadow: 0 0 20px rgba(0,0,0,0.2);
@@ -36,7 +46,13 @@ upload_page = """
                 color: #333;
                 border-bottom: 2px solid #eee;
                 padding-bottom: 10px;
-                text-align: center;
+            }}
+            a {{
+                color: #2c82c9;
+                text-decoration: none;
+            }}
+            a:hover {{
+                text-decoration: underline;
             }}
             .form-group {{
                 margin: 20px 0;
@@ -65,17 +81,17 @@ upload_page = """
                 padding: 10px;
                 border: 2px dashed #ddd;
                 border-radius: 8px;
-                background: #f9f9f9;
+                background: rgba(245, 245, 245, 0.9);
                 cursor: pointer;
                 transition: all 0.3s;
             }}
             input[type="file"]:hover {{
                 border-color: #2c82c9;
-                background: #f0f8ff;
+                background: rgba(235, 245, 255, 0.9);
             }}
             .btn {{
-                width: 100%;
-                padding: 14px;
+                display: inline-block;
+                padding: 10px 20px;
                 background: #2c82c9;
                 color: white;
                 border: none;
@@ -83,13 +99,14 @@ upload_page = """
                 font-size: 16px;
                 cursor: pointer;
                 transition: background 0.3s;
-                margin-top: 10px;
+                text-decoration: none;
             }}
             .btn:hover {{
                 background: #1a5a8a;
             }}
             .btn-secondary {{
                 background: #666;
+                margin-left: 10px;
             }}
             .btn-secondary:hover {{
                 background: #444;
@@ -129,16 +146,6 @@ upload_page = """
                 color: #721c24;
                 border: 1px solid #f5c6cb;
             }}
-            .back-link {{
-                display: block;
-                text-align: center;
-                margin-top: 20px;
-                color: #2c82c9;
-                text-decoration: none;
-            }}
-            .back-link:hover {{
-                text-decoration: underline;
-            }}
             .upload-type {{
                 display: flex;
                 gap: 10px;
@@ -157,12 +164,31 @@ upload_page = """
             }}
             .upload-type input[type="radio"]:checked + label {{
                 border-color: #2c82c9;
-                background: #e8f4fc;
+                background: rgba(235, 245, 255, 0.9);
                 color: #2c82c9;
                 font-weight: bold;
             }}
             .upload-type input[type="radio"] {{
                 display: none;
+            }}
+            .login-section {{
+                background: rgba(245, 245, 245, 0.9);
+                padding: 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }}
+            .login-section h3 {{
+                margin-top: 0;
+                color: #333;
+            }}
+            .back-link {{
+                display: inline-block;
+                margin-top: 20px;
+                color: #2c82c9;
+                text-decoration: none;
+            }}
+            .back-link:hover {{
+                text-decoration: underline;
             }}
         </style>
     </head>
@@ -170,61 +196,85 @@ upload_page = """
         <div class="container">
             <h1>📤 文件上传</h1>
             
-            <div class="upload-type">
-                <input type="radio" id="type-file" name="upload-type" value="file" checked>
-                <label for="type-file">📁 上传文件</label>
-                <input type="radio" id="type-text" name="upload-type" value="text">
-                <label for="type-text">📝 创建文本</label>
+            <div class="login-section" id="login-section">
+                <h3>🔐 管理员登录</h3>
+                <div class="form-group">
+                    <label for="admin-user">用户名</label>
+                    <input type="text" id="admin-user" placeholder="输入管理员用户名">
+                </div>
+                <div class="form-group">
+                    <label for="admin-pass">密码</label>
+                    <input type="password" id="admin-pass" placeholder="输入管理员密码">
+                </div>
+                <button class="btn" id="login-btn">登录</button>
+                <div class="message" id="login-error"></div>
             </div>
 
-            <div class="form-group">
-                <label for="file-input">选择文件</label>
-                <input type="file" id="file-input" accept="*">
-                <div id="file-name" style="margin-top: 8px; color: #666;"></div>
+            <div id="upload-form" style="display: none;">
+                <div class="upload-type">
+                    <input type="radio" id="type-file" name="upload-type" value="file" checked>
+                    <label for="type-file">📁 上传文件</label>
+                    <input type="radio" id="type-text" name="upload-type" value="text">
+                    <label for="type-text">📝 创建文本</label>
+                </div>
+
+                <div class="form-group">
+                    <label for="file-input">选择文件</label>
+                    <input type="file" id="file-input" accept="*">
+                    <div id="file-name" style="margin-top: 8px; color: #666;"></div>
+                </div>
+
+                <div class="form-group" id="text-content-group" style="display: none;">
+                    <label for="text-content">文本内容</label>
+                    <textarea id="text-content" rows="8" placeholder="输入文本内容..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="target-path">目标路径</label>
+                    <input type="text" id="target-path" placeholder="例如: docs/myfile.txt">
+                </div>
+
+                <div class="form-group">
+                    <label for="commit-msg">提交信息</label>
+                    <input type="text" id="commit-msg" placeholder="上传文件" value="上传文件 via upload">
+                </div>
+
+                <div class="progress-bar" id="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+
+                <div class="message" id="success-message">上传成功！页面将自动刷新...</div>
+                <div class="message" id="error-message"></div>
+
+                <button class="btn" id="upload-btn">开始上传</button>
+                <button class="btn btn-secondary" id="cancel-btn">取消</button>
             </div>
-
-            <div class="form-group" id="text-content-group" style="display: none;">
-                <label for="text-content">文本内容</label>
-                <textarea id="text-content" rows="8" placeholder="输入文本内容..."></textarea>
-            </div>
-
-            <div class="form-group">
-                <label for="target-path">目标路径</label>
-                <input type="text" id="target-path" placeholder="例如: docs/myfile.txt">
-            </div>
-
-            <div class="form-group">
-                <label for="commit-msg">提交信息</label>
-                <input type="text" id="commit-msg" placeholder="上传文件" value="上传文件 via upload">
-            </div>
-
-            <div class="form-group">
-                <label for="github-token">GitHub PAT Token</label>
-                <input type="password" id="github-token" placeholder="输入你的GitHub Personal Access Token">
-                <small style="color: #666;">需要 repo 权限的PAT，不会被保存</small>
-            </div>
-
-            <div class="progress-bar" id="progress-bar">
-                <div class="progress-fill" id="progress-fill"></div>
-            </div>
-
-            <div class="message" id="success-message">上传成功！页面将自动刷新...</div>
-            <div class="message" id="error-message"></div>
-
-            <button class="btn" id="upload-btn">开始上传</button>
-            <button class="btn btn-secondary" id="cancel-btn">取消</button>
 
             <a href="index.html" class="back-link">⬅ 返回文件列表</a>
+            <hr>
+            <a style="text-decoration: none; color: #34495e; font-size: 15px; font-weight: 400;" href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank">闽ICP备2025107306号-1</a>
         </div>
 
         <script>
+            const ADMIN_USER = '__ADMIN_USER__';
+            const ADMIN_PASS = '__ADMIN_PASS__';
+            const GITHUB_APIKEY = '__GITHUB_APIKEY__';
+            const REPO_OWNER = '__REPO_OWNER__';
+            const REPO_NAME = '__REPO_NAME__';
+
+            const loginSection = document.getElementById('login-section');
+            const uploadForm = document.getElementById('upload-form');
+            const adminUser = document.getElementById('admin-user');
+            const adminPass = document.getElementById('admin-pass');
+            const loginBtn = document.getElementById('login-btn');
+            const loginError = document.getElementById('login-error');
+
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
             const textContentGroup = document.getElementById('text-content-group');
             const textContent = document.getElementById('text-content');
             const targetPath = document.getElementById('target-path');
             const commitMsg = document.getElementById('commit-msg');
-            const githubToken = document.getElementById('github-token');
             const uploadBtn = document.getElementById('upload-btn');
             const cancelBtn = document.getElementById('cancel-btn');
             const progressBar = document.getElementById('progress-bar');
@@ -233,6 +283,29 @@ upload_page = """
             const errorMessage = document.getElementById('error-message');
             const typeFile = document.getElementById('type-file');
             const typeText = document.getElementById('type-text');
+
+            function showLoginError(msg) {
+                loginError.textContent = msg;
+                loginError.className = 'message error';
+                loginError.style.display = 'block';
+            }
+
+            function hideLoginError() {
+                loginError.style.display = 'none';
+            }
+
+            loginBtn.addEventListener('click', () => {
+                const user = adminUser.value.trim();
+                const pass = adminPass.value.trim();
+
+                if (user === ADMIN_USER && pass === ADMIN_PASS) {
+                    hideLoginError();
+                    loginSection.style.display = 'none';
+                    uploadForm.style.display = 'block';
+                } else {
+                    showLoginError('用户名或密码错误');
+                }
+            });
 
             typeFile.addEventListener('change', () => {
                 fileInput.style.display = 'block';
@@ -246,7 +319,7 @@ upload_page = """
 
             fileInput.addEventListener('change', (e) => {
                 if (e.target.files.length > 0) {
-                    fileName.textContent = `已选择: ${e.target.files[0].name}`;
+                    fileName.textContent = '已选择: ' + e.target.files[0].name;
                     if (!targetPath.value) {
                         targetPath.value = e.target.files[0].name;
                     }
@@ -257,6 +330,7 @@ upload_page = """
 
             function showError(msg) {
                 errorMessage.textContent = msg;
+                errorMessage.className = 'message error';
                 errorMessage.style.display = 'block';
                 successMessage.style.display = 'none';
                 uploadBtn.disabled = false;
@@ -264,21 +338,36 @@ upload_page = """
             }
 
             function showSuccess() {
+                successMessage.className = 'message success';
                 successMessage.style.display = 'block';
                 errorMessage.style.display = 'none';
                 uploadBtn.disabled = false;
                 progressBar.style.display = 'none';
             }
 
+            async function getFileSha(path) {
+                const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path;
+                try {
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': 'token ' + GITHUB_APIKEY,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+                    if (response.status === 200) {
+                        const data = await response.json();
+                        return data.sha;
+                    }
+                    return null;
+                } catch (error) {
+                    return null;
+                }
+            }
+
             async function uploadFile() {
-                const token = githubToken.value.trim();
                 const path = targetPath.value.trim();
                 const message = commitMsg.value.trim() || '上传文件';
 
-                if (!token) {
-                    showError('请输入GitHub PAT Token');
-                    return;
-                }
                 if (!path) {
                     showError('请输入目标路径');
                     return;
@@ -317,41 +406,36 @@ upload_page = """
                 progressFill.style.width = '30%';
 
                 try {
-                    const repoUrl = window.location.href;
-                    const urlParts = repoUrl.split('/');
-                    let owner = urlParts[3];
-                    let repo = urlParts[4];
-                    
-                    if (repo.includes('.')) {
-                        repo = repo.split('.')[0];
-                    }
-
-                    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/upload.yml/dispatches`;
-                    
+                    const sha = await getFileSha(path);
                     progressFill.style.width = '50%';
 
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
+                    const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path;
+                    
+                    const body = {
+                        message: message,
+                        content: contentBase64,
+                        branch: 'main'
+                    };
+
+                    if (sha) {
+                        body.sha = sha;
+                    }
+
+                    const response = await fetch(url, {
+                        method: 'PUT',
                         headers: {
-                            'Authorization': `token ${token}`,
+                            'Authorization': 'token ' + GITHUB_APIKEY,
                             'Accept': 'application/vnd.github.v3+json',
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({
-                            ref: 'main',
-                            inputs: {
-                                file_path: path,
-                                file_content: contentBase64,
-                                commit_message: message
-                            }
-                        })
+                        body: JSON.stringify(body)
                     });
 
                     progressFill.style.width = '80%';
 
                     if (!response.ok) {
                         const errorData = await response.json();
-                        throw new Error(`HTTP ${response.status}: ${errorData.message || '上传失败'}`);
+                        throw new Error('HTTP ' + response.status + ': ' + (errorData.message || '上传失败'));
                     }
 
                     progressFill.style.width = '100%';
@@ -521,6 +605,12 @@ def copy_files(source_dir, output_dir):
             shutil.copy2(src, dst)
 
 def generate_upload_page(output_dir):
+    upload_page = upload_page_template
+    upload_page = upload_page.replace('__ADMIN_USER__', ADMIN_USER)
+    upload_page = upload_page.replace('__ADMIN_PASS__', ADMIN_PASS)
+    upload_page = upload_page.replace('__GITHUB_APIKEY__', GITHUB_APIKEY)
+    upload_page = upload_page.replace('__REPO_OWNER__', REPO_OWNER)
+    upload_page = upload_page.replace('__REPO_NAME__', REPO_NAME)
     with open(os.path.join(output_dir, 'upload.html'), 'w', encoding='utf-8') as f:
         f.write(upload_page)
 
@@ -587,6 +677,12 @@ def generate_index_html(root_dir):
 
         for dir_name in dirs:
             dir_path = os.path.join(root, dir_name)
+            upload_page = upload_page_template
+            upload_page = upload_page.replace('__ADMIN_USER__', ADMIN_USER)
+            upload_page = upload_page.replace('__ADMIN_PASS__', ADMIN_PASS)
+            upload_page = upload_page.replace('__GITHUB_APIKEY__', GITHUB_APIKEY)
+            upload_page = upload_page.replace('__REPO_OWNER__', REPO_OWNER)
+            upload_page = upload_page.replace('__REPO_NAME__', REPO_NAME)
             with open(os.path.join(dir_path, 'upload.html'), 'w', encoding='utf-8') as f:
                 f.write(upload_page)
 

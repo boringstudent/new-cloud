@@ -25,7 +25,12 @@ jobs:
       run: pip install markdown
 
     - name: Run build script
-      run: python build.py  # 执行构建脚本生成 build 文件夹
+      run: python build.py
+      env:
+        github-apikey: ${{ secrets.github-apikey }}
+        ADMIN: ${{ secrets.ADMIN }}
+        REPO_OWNER: ${{ secrets.REPO_OWNER }}
+        REPO_NAME: ${{ secrets.REPO_NAME }}
 
     # 配置Pages环境
     - name: Configure Pages
