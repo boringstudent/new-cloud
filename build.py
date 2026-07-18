@@ -4,13 +4,6 @@ import hashlib
 import markdown
 import shutil
 
-GITHUB_APIKEY = os.environ.get('APIKEY', '')
-ADMIN_CREDENTIALS = os.environ.get('ADMIN', '')
-ADMIN_USER = ''
-ADMIN_PASS = ''
-if ':' in ADMIN_CREDENTIALS:
-    ADMIN_USER, ADMIN_PASS = ADMIN_CREDENTIALS.split(':', 1)
-
 REPO_NAME = os.environ.get('REPO_NAME', '')
 
 GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
@@ -22,7 +15,7 @@ template = """
 <html>
     <head>
         <meta charset="utf-8">
-        <title>FULLPATH - boring_student </title>
+        <title>FULLPATH</title>
         <link rel="icon" href="./favicon.ico" type="image/x-icon">
         <link rel="shortcut icon" href="./favicon.ico" type="image/x-icon">
         <style>
@@ -141,7 +134,7 @@ template = """
                 color: #333;
                 font-weight: bold;
             }
-            input[type="text"], input[type="password"], textarea {
+            input[type="text"] {
                 width: 100%;
                 padding: 12px;
                 border: 2px solid #ddd;
@@ -150,7 +143,7 @@ template = """
                 box-sizing: border-box;
                 transition: border-color 0.3s;
             }
-            input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+            input[type="text"]:focus {
                 border-color: #2c82c9;
                 outline: none;
             }
@@ -230,41 +223,6 @@ template = """
                 color: #721c24;
                 border: 1px solid #f5c6cb;
             }
-            .upload-type {
-                display: flex;
-                gap: 10px;
-                margin-bottom: 20px;
-            }
-            .upload-type label {
-                flex: 1;
-                text-align: center;
-                padding: 10px;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-                cursor: pointer;
-                transition: all 0.3s;
-                margin-bottom: 0;
-                font-weight: normal;
-            }
-            .upload-type input[type="radio"]:checked + label {
-                border-color: #2c82c9;
-                background: rgba(235, 245, 255, 0.9);
-                color: #2c82c9;
-                font-weight: bold;
-            }
-            .upload-type input[type="radio"] {
-                display: none;
-            }
-            .login-section {
-                background: rgba(245, 245, 245, 0.9);
-                padding: 20px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-            }
-            .login-section h3 {
-                margin-top: 0;
-                color: #333;
-            }
         </style>
     </head>
     <body>
@@ -285,24 +243,7 @@ template = """
                 <a href="#" class="modal-close" id="modal-close">&times;</a>
                 <h1>文件上传</h1>
                 
-                <div class="login-section" id="login-section">
-                    <h3>管理员登录</h3>
-                    <div class="form-group">
-                        <label for="admin-user">用户名</label>
-                        <input type="text" id="admin-user" placeholder="输入管理员用户名">
-                    </div>
-                    <div class="form-group">
-                        <label for="admin-pass">密码</label>
-                        <div style="position: relative;">
-                            <input type="password" id="admin-pass" placeholder="输入管理员密码">
-                            <button type="button" id="toggle-pass" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #666;">显示</button>
-                        </div>
-                    </div>
-                    <button class="btn" id="login-btn">登录</button>
-                    <div class="message" id="login-error"></div>
-                </div>
-
-                <div id="upload-form" style="display: none;">
+                <div id="upload-form">
                     <div class="form-group">
                         <label for="file-input">选择文件</label>
                         <input type="file" id="file-input" accept="*">
@@ -334,32 +275,12 @@ template = """
         </div>
 
         <script>
-            const ADMIN_USER = '__ADMIN_USER__';
-            const ADMIN_PASS = '__ADMIN_PASS__';
-            const GITHUB_APIKEY = '__GITHUB_APIKEY__';
             const REPO_OWNER = '__REPO_OWNER__';
             const REPO_NAME = '__REPO_NAME__';
-
-            console.log('=== 系统配置信息 ===');
-            console.log('ADMIN_USER:', ADMIN_USER || '未配置');
-            console.log('ADMIN_PASS:', ADMIN_PASS ? '已配置' : '未配置');
-            console.log('GITHUB_APIKEY:', GITHUB_APIKEY ? '已配置 (' + GITHUB_APIKEY.substring(0, 8) + '...)' : '未配置');
-            console.log('REPO_OWNER:', REPO_OWNER || '未配置');
-            console.log('REPO_NAME:', REPO_NAME || '未配置');
-            console.log('=== 配置检查 ===');
-            console.log('配置完整:', !!(ADMIN_USER && ADMIN_PASS && GITHUB_APIKEY && REPO_OWNER && REPO_NAME));
 
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
             const modalClose = document.getElementById('modal-close');
-
-            const loginSection = document.getElementById('login-section');
-            const uploadForm = document.getElementById('upload-form');
-            const adminUser = document.getElementById('admin-user');
-            const adminPass = document.getElementById('admin-pass');
-            const togglePass = document.getElementById('toggle-pass');
-            const loginBtn = document.getElementById('login-btn');
-            const loginError = document.getElementById('login-error');
 
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
@@ -381,11 +302,6 @@ template = """
             function closeModal() {
                 modalOverlay.classList.remove('show');
                 document.body.style.overflow = '';
-                loginSection.style.display = 'block';
-                uploadForm.style.display = 'none';
-                adminUser.value = '';
-                adminPass.value = '';
-                hideLoginError();
                 resetForm();
             }
 
@@ -398,35 +314,6 @@ template = """
                 if (e.target === modalOverlay) {
                     closeModal();
                 }
-            });
-
-            function showLoginError(msg) {
-                loginError.textContent = msg;
-                loginError.className = 'message error';
-                loginError.style.display = 'block';
-            }
-
-            function hideLoginError() {
-                loginError.style.display = 'none';
-            }
-
-            loginBtn.addEventListener('click', function() {
-                const user = adminUser.value.trim();
-                const pass = adminPass.value.trim();
-
-                if (user === ADMIN_USER && pass === ADMIN_PASS) {
-                    hideLoginError();
-                    loginSection.style.display = 'none';
-                    uploadForm.style.display = 'block';
-                } else {
-                    showLoginError('用户名或密码错误');
-                }
-            });
-
-            togglePass.addEventListener('click', function() {
-                const type = adminPass.type === 'password' ? 'text' : 'password';
-                adminPass.type = type;
-                togglePass.textContent = type === 'password' ? '显示' : '隐藏';
             });
 
             fileInput.addEventListener('change', function(e) {
@@ -475,28 +362,6 @@ template = """
                 progressText.textContent = text;
             }
 
-            function getFileSha(path, callback) {
-                const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path;
-                const xhr = new XMLHttpRequest();
-                xhr.open('GET', url, true);
-                xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
-                xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
-                xhr.onreadystatechange = function() {
-                    if (xhr.readyState === 4) {
-                        if (xhr.status === 200) {
-                            const data = JSON.parse(xhr.responseText);
-                            callback(null, data.sha);
-                        } else {
-                            callback(null, null);
-                        }
-                    }
-                };
-                xhr.onerror = function() {
-                    callback(null, null);
-                };
-                xhr.send();
-            }
-
             function uploadFile() {
                 const path = targetPath.value.trim();
                 const message = commitMsg.value.trim() || '上传文件';
@@ -511,12 +376,8 @@ template = """
                     return;
                 }
 
-                if (!GITHUB_APIKEY || !REPO_OWNER || !REPO_NAME) {
-                    var missing = [];
-                    if (!GITHUB_APIKEY) missing.push('APIKEY');
-                    if (!REPO_OWNER) missing.push('REPO_OWNER');
-                    if (!REPO_NAME) missing.push('REPO_NAME');
-                    showError('系统配置未完成：缺少 ' + missing.join(', ') + '。请检查 GitHub Secrets 配置。');
+                if (!REPO_OWNER || !REPO_NAME) {
+                    showError('系统配置未完成');
                     return;
                 }
 
@@ -538,75 +399,66 @@ template = """
                 progressBar.style.display = 'block';
                 updateProgress(5, '正在准备上传...');
 
-                getFileSha(path, function(error, sha) {
-                    if (error) {
-                        showError('获取文件信息失败');
-                        return;
+                updateProgress(20, '正在连接服务器...');
+
+                const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/actions/workflows/upload.yml/dispatches';
+                
+                const body = {
+                    ref: 'main',
+                    inputs: {
+                        file_path: path,
+                        file_content_base64: contentBase64,
+                        commit_message: message
                     }
+                };
 
-                    updateProgress(20, '正在连接服务器...');
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+                xhr.setRequestHeader('Content-Type', 'application/json');
 
-                    const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path;
-                    
-                    const body = {
-                        message: message,
-                        content: contentBase64,
-                        branch: 'main'
-                    };
-
-                    if (sha) {
-                        body.sha = sha;
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        const displayedPercent = 20 + (percent * 0.6);
+                        updateProgress(Math.min(displayedPercent, 90), '正在上传: ' + percent + '%');
                     }
+                };
 
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('PUT', url, true);
-                    xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
-                    xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
-                    xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.upload.onload = function() {
+                    updateProgress(95, '上传完成，处理中...');
+                };
 
-                    xhr.upload.onprogress = function(e) {
-                        if (e.lengthComputable) {
-                            const percent = Math.round((e.loaded / e.total) * 100);
-                            const displayedPercent = 20 + (percent * 0.6);
-                            updateProgress(Math.min(displayedPercent, 90), '正在上传: ' + percent + '%');
-                        }
-                    };
-
-                    xhr.upload.onload = function() {
-                        updateProgress(95, '上传完成，处理中...');
-                    };
-
-                    xhr.onreadystatechange = function() {
-                        if (xhr.readyState === 4) {
-                            if (xhr.status === 201 || xhr.status === 200) {
-                                updateProgress(100, '上传成功！');
-                                showSuccess();
-                                setTimeout(function() {
-                                    window.location.reload();
-                                }, 2000);
-                            } else {
-                                let errorMsg = '上传失败';
-                                try {
-                                    const data = JSON.parse(xhr.responseText);
-                                    errorMsg = 'HTTP ' + xhr.status + ': ' + (data.message || errorMsg);
-                                } catch (e) {
-                                    errorMsg = 'HTTP ' + xhr.status + ': ' + errorMsg;
-                                }
-                                showError(errorMsg);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 201 || xhr.status === 200) {
+                            updateProgress(100, '上传成功！');
+                            showSuccess();
+                            setTimeout(function() {
+                                window.location.reload();
+                            }, 2000);
+                        } else {
+                            let errorMsg = '上传失败';
+                            try {
+                                const data = JSON.parse(xhr.responseText);
+                                errorMsg = 'HTTP ' + xhr.status + ': ' + (data.message || errorMsg);
+                            } catch (e) {
+                                errorMsg = 'HTTP ' + xhr.status + ': ' + errorMsg;
                             }
+                            showError(errorMsg);
                         }
-                    };
+                    }
+                };
 
-                    xhr.onerror = function() {
-                        showError('网络连接失败');
-                    };
+                xhr.onerror = function() {
+                    showError('网络连接失败');
+                };
 
-                    xhr.ontimeout = function() {
-                        showError('请求超时');
-                    };
+                xhr.ontimeout = function() {
+                    showError('请求超时');
+                };
 
-                    xhr.send(JSON.stringify(body));
-                });
+                xhr.send(JSON.stringify(body));
             }
 
             uploadBtn.addEventListener('click', uploadFile);
@@ -724,9 +576,6 @@ def generate_index_html(root_dir):
         index_content = index_content.replace('INFOCONTENT', info_placeholder)
         index_content = index_content.replace('FILECONTENT', content)
 
-        index_content = index_content.replace('__ADMIN_USER__', ADMIN_USER)
-        index_content = index_content.replace('__ADMIN_PASS__', ADMIN_PASS)
-        index_content = index_content.replace('__GITHUB_APIKEY__', GITHUB_APIKEY)
         index_content = index_content.replace('__REPO_OWNER__', REPO_OWNER)
         index_content = index_content.replace('__REPO_NAME__', REPO_NAME)
 
