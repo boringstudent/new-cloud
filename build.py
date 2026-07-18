@@ -4,15 +4,19 @@ import hashlib
 import markdown
 import shutil
 
-GITHUB_APIKEY = os.environ.get('github-apikey', '')
+GITHUB_APIKEY = os.environ.get('APIKEY', '')
 ADMIN_CREDENTIALS = os.environ.get('ADMIN', '')
 ADMIN_USER = ''
 ADMIN_PASS = ''
 if ':' in ADMIN_CREDENTIALS:
     ADMIN_USER, ADMIN_PASS = ADMIN_CREDENTIALS.split(':', 1)
 
-REPO_OWNER = os.environ.get('REPO_OWNER', '')
 REPO_NAME = os.environ.get('REPO_NAME', '')
+
+GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
+REPO_OWNER = ''
+if '/' in GITHUB_REPOSITORY:
+    REPO_OWNER = GITHUB_REPOSITORY.split('/')[0]
 
 template = """
 <html>

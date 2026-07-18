@@ -24,12 +24,18 @@ jobs:
     - name: Install dependencies
       run: pip install markdown
 
+    - name: Debug - Print secrets info
+      run: |
+        echo "APIKEY is set: ${{ secrets.APIKEY != '' }}"
+        echo "ADMIN is set: ${{ secrets.ADMIN != '' }}"
+        echo "REPO_NAME is set: ${{ secrets.REPO_NAME != '' }}"
+        echo "GITHUB_REPOSITORY: ${{ github.repository }}"
+
     - name: Run build script
       run: python build.py
       env:
-        github-apikey: ${{ secrets.github-apikey }}
+        APIKEY: ${{ secrets.APIKEY }}
         ADMIN: ${{ secrets.ADMIN }}
-        REPO_OWNER: ${{ secrets.REPO_OWNER }}
         REPO_NAME: ${{ secrets.REPO_NAME }}
 
     # 配置Pages环境
