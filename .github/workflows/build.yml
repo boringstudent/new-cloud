@@ -27,6 +27,7 @@ jobs:
     - name: Run build script
       run: python build.py
       env:
+        ADMIN: ${{ secrets.ADMIN }}
         REPO_NAME: ${{ secrets.REPO_NAME }}
 
     # 配置Pages环境

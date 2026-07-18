@@ -11,6 +11,12 @@ REPO_OWNER = ''
 if '/' in GITHUB_REPOSITORY:
     REPO_OWNER = GITHUB_REPOSITORY.split('/')[0]
 
+ADMIN_CREDENTIALS = os.environ.get('ADMIN', '')
+ADMIN_USER = ''
+ADMIN_PASS = ''
+if ':' in ADMIN_CREDENTIALS:
+    ADMIN_USER, ADMIN_PASS = ADMIN_CREDENTIALS.split(':', 1)
+
 template = """
 <html>
     <head>
@@ -223,6 +229,16 @@ template = """
                 color: #721c24;
                 border: 1px solid #f5c6cb;
             }
+            .login-section {
+                background: rgba(245, 245, 245, 0.9);
+                padding: 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+            }
+            .login-section h3 {
+                margin-top: 0;
+                color: #333;
+            }
         </style>
     </head>
     <body>
@@ -243,7 +259,21 @@ template = """
                 <a href="#" class="modal-close" id="modal-close">&times;</a>
                 <h1>文件上传</h1>
                 
-                <div id="upload-form">
+                <div class="login-section" id="login-section">
+                    <h3>管理员登录</h3>
+                    <div class="form-group">
+                        <label for="admin-user">用户名</label>
+                        <input type="text" id="admin-user" placeholder="输入用户名">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-pass">密码</label>
+                        <input type="password" id="admin-pass" placeholder="输入密码">
+                    </div>
+                    <button class="btn" id="login-btn">登录</button>
+                    <div class="message" id="login-error"></div>
+                </div>
+
+                <div id="upload-form" style="display: none;">
                     <div class="form-group">
                         <label for="file-input">选择文件</label>
                         <input type="file" id="file-input" accept="*">
@@ -253,6 +283,12 @@ template = """
                     <div class="form-group">
                         <label for="target-path">目标路径</label>
                         <input type="text" id="target-path" placeholder="例如: docs/myfile.txt">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pat-token">GitHub PAT Token</label>
+                        <input type="password" id="pat-token" placeholder="ghp_xxx...">
+                        <div style="font-size: 12px; color: #666; margin-top: 5px;">需要 repo 和 workflow 权限</div>
                     </div>
 
                     <div class="form-group">
@@ -277,14 +313,24 @@ template = """
         <script>
             const REPO_OWNER = '__REPO_OWNER__';
             const REPO_NAME = '__REPO_NAME__';
+            const ADMIN_USER = '__ADMIN_USER__';
+            const ADMIN_PASS = '__ADMIN_PASS__';
 
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
             const modalClose = document.getElementById('modal-close');
 
+            const loginSection = document.getElementById('login-section');
+            const uploadForm = document.getElementById('upload-form');
+            const adminUser = document.getElementById('admin-user');
+            const adminPass = document.getElementById('admin-pass');
+            const loginBtn = document.getElementById('login-btn');
+            const loginError = document.getElementById('login-error');
+
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
             const targetPath = document.getElementById('target-path');
+            const patToken = document.getElementById('pat-token');
             const commitMsg = document.getElementById('commit-msg');
             const uploadBtn = document.getElementById('upload-btn');
             const cancelBtn = document.getElementById('cancel-btn');
@@ -302,6 +348,10 @@ template = """
             function closeModal() {
                 modalOverlay.classList.remove('show');
                 document.body.style.overflow = '';
+                loginSection.style.display = 'block';
+                uploadForm.style.display = 'none';
+                adminUser.value = '';
+                adminPass.value = '';
                 resetForm();
             }
 
@@ -313,6 +363,28 @@ template = """
             modalOverlay.addEventListener('click', function(e) {
                 if (e.target === modalOverlay) {
                     closeModal();
+                }
+            });
+
+            function showLoginError(msg) {
+                loginError.textContent = msg;
+                loginError.className = 'message error';
+                loginError.style.display = 'block';
+            }
+
+            function hideLoginError() {
+                loginError.style.display = 'none';
+            }
+
+            loginBtn.addEventListener('click', function() {
+                const user = adminUser.value.trim();
+                const pass = adminPass.value.trim();
+                if (user === ADMIN_USER && pass === ADMIN_PASS) {
+                    hideLoginError();
+                    loginSection.style.display = 'none';
+                    uploadForm.style.display = 'block';
+                } else {
+                    showLoginError('用户名或密码错误');
                 }
             });
 
@@ -365,6 +437,7 @@ template = """
             function uploadFile() {
                 const path = targetPath.value.trim();
                 const message = commitMsg.value.trim() || '上传文件';
+                const token = patToken.value.trim();
 
                 if (!path) {
                     showError('请输入目标路径');
@@ -373,6 +446,11 @@ template = """
 
                 if (!fileInput.files || fileInput.files.length === 0) {
                     showError('请选择要上传的文件');
+                    return;
+                }
+
+                if (!token) {
+                    showError('请输入 GitHub PAT Token');
                     return;
                 }
 
@@ -386,7 +464,7 @@ template = """
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const contentBase64 = e.target.result.split(',')[1];
-                    startUpload(path, message, contentBase64);
+                    startUpload(path, message, contentBase64, token);
                 };
                 reader.onerror = function() {
                     showError('文件读取失败');
@@ -394,7 +472,7 @@ template = """
                 reader.readAsDataURL(file);
             }
 
-            function startUpload(path, message, contentBase64) {
+            function startUpload(path, message, contentBase64, token) {
                 uploadBtn.disabled = true;
                 progressBar.style.display = 'block';
                 updateProgress(5, '正在准备上传...');
@@ -414,6 +492,7 @@ template = """
 
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', url, true);
+                xhr.setRequestHeader('Authorization', 'token ' + token);
                 xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
                 xhr.setRequestHeader('Content-Type', 'application/json');
 
@@ -576,6 +655,8 @@ def generate_index_html(root_dir):
         index_content = index_content.replace('INFOCONTENT', info_placeholder)
         index_content = index_content.replace('FILECONTENT', content)
 
+        index_content = index_content.replace('__ADMIN_USER__', ADMIN_USER)
+        index_content = index_content.replace('__ADMIN_PASS__', ADMIN_PASS)
         index_content = index_content.replace('__REPO_OWNER__', REPO_OWNER)
         index_content = index_content.replace('__REPO_NAME__', REPO_NAME)
 
