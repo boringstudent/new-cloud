@@ -269,11 +269,11 @@ template = """
     </head>
     <body>
         <div class="container">
-            <h1>📁 FULLPATH</h1>
+            <h1>FULLPATH</h1>
             INFOCONTENT
             <div style="margin: 20px 0;">
-                <a href="../" style="font-size: 1.1em;">⬆ 上级目录</a>
-                <button class="upload-btn" id="open-upload-btn" style="margin-left: 20px; border: none;">📤 上传文件</button>
+                <a href="../" style="font-size: 1.1em;">上级目录</a>
+                <button class="upload-btn" id="open-upload-btn" style="margin-left: 20px; border: none;">上传文件</button>
             </div>
             FILECONTENT
             <hr>
@@ -283,39 +283,30 @@ template = """
         <div class="modal-overlay" id="upload-modal">
             <div class="modal-content">
                 <a href="#" class="modal-close" id="modal-close">&times;</a>
-                <h1>📤 文件上传</h1>
+                <h1>文件上传</h1>
                 
                 <div class="login-section" id="login-section">
-                    <h3>🔐 管理员登录</h3>
+                    <h3>管理员登录</h3>
                     <div class="form-group">
                         <label for="admin-user">用户名</label>
                         <input type="text" id="admin-user" placeholder="输入管理员用户名">
                     </div>
                     <div class="form-group">
                         <label for="admin-pass">密码</label>
-                        <input type="password" id="admin-pass" placeholder="输入管理员密码">
+                        <div style="position: relative;">
+                            <input type="password" id="admin-pass" placeholder="输入管理员密码">
+                            <button type="button" id="toggle-pass" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #666;">显示</button>
+                        </div>
                     </div>
                     <button class="btn" id="login-btn">登录</button>
                     <div class="message" id="login-error"></div>
                 </div>
 
                 <div id="upload-form" style="display: none;">
-                    <div class="upload-type">
-                        <input type="radio" id="type-file" name="upload-type" value="file" checked>
-                        <label for="type-file">📁 上传文件</label>
-                        <input type="radio" id="type-text" name="upload-type" value="text">
-                        <label for="type-text">📝 创建文本</label>
-                    </div>
-
                     <div class="form-group">
                         <label for="file-input">选择文件</label>
                         <input type="file" id="file-input" accept="*">
                         <div id="file-name" style="margin-top: 8px; color: #666;"></div>
-                    </div>
-
-                    <div class="form-group" id="text-content-group" style="display: none;">
-                        <label for="text-content">文本内容</label>
-                        <textarea id="text-content" rows="8" placeholder="输入文本内容..."></textarea>
                     </div>
 
                     <div class="form-group">
@@ -366,13 +357,12 @@ template = """
             const uploadForm = document.getElementById('upload-form');
             const adminUser = document.getElementById('admin-user');
             const adminPass = document.getElementById('admin-pass');
+            const togglePass = document.getElementById('toggle-pass');
             const loginBtn = document.getElementById('login-btn');
             const loginError = document.getElementById('login-error');
 
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
-            const textContentGroup = document.getElementById('text-content-group');
-            const textContent = document.getElementById('text-content');
             const targetPath = document.getElementById('target-path');
             const commitMsg = document.getElementById('commit-msg');
             const uploadBtn = document.getElementById('upload-btn');
@@ -382,8 +372,6 @@ template = """
             const progressText = document.getElementById('progress-text');
             const successMessage = document.getElementById('success-message');
             const errorMessage = document.getElementById('error-message');
-            const typeFile = document.getElementById('type-file');
-            const typeText = document.getElementById('type-text');
 
             function openModal() {
                 modalOverlay.classList.add('show');
@@ -435,14 +423,10 @@ template = """
                 }
             });
 
-            typeFile.addEventListener('change', function() {
-                fileInput.style.display = 'block';
-                textContentGroup.style.display = 'none';
-            });
-
-            typeText.addEventListener('change', function() {
-                fileInput.style.display = 'none';
-                textContentGroup.style.display = 'block';
+            togglePass.addEventListener('click', function() {
+                const type = adminPass.type === 'password' ? 'text' : 'password';
+                adminPass.type = type;
+                togglePass.textContent = type === 'password' ? '显示' : '隐藏';
             });
 
             fileInput.addEventListener('change', function(e) {
@@ -459,12 +443,8 @@ template = """
             function resetForm() {
                 fileInput.value = '';
                 fileName.textContent = '';
-                textContent.value = '';
                 targetPath.value = '';
                 commitMsg.value = '上传文件 via upload';
-                typeFile.checked = true;
-                fileInput.style.display = 'block';
-                textContentGroup.style.display = 'none';
                 progressBar.style.display = 'none';
                 progressFill.style.width = '0%';
                 progressText.textContent = '';
@@ -526,42 +506,31 @@ template = """
                     return;
                 }
 
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    showError('请选择要上传的文件');
+                    return;
+                }
+
                 if (!GITHUB_APIKEY || !REPO_OWNER || !REPO_NAME) {
                     var missing = [];
-                    if (!GITHUB_APIKEY) missing.push('github-apikey');
+                    if (!GITHUB_APIKEY) missing.push('APIKEY');
                     if (!REPO_OWNER) missing.push('REPO_OWNER');
                     if (!REPO_NAME) missing.push('REPO_NAME');
                     showError('系统配置未完成：缺少 ' + missing.join(', ') + '。请检查 GitHub Secrets 配置。');
                     return;
                 }
 
-                let contentBase64;
-
-                if (typeFile.checked) {
-                    if (!fileInput.files || fileInput.files.length === 0) {
-                        showError('请选择要上传的文件');
-                        return;
-                    }
-                    const file = fileInput.files[0];
-                    
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        contentBase64 = e.target.result.split(',')[1];
-                        startUpload(path, message, contentBase64);
-                    };
-                    reader.onerror = function() {
-                        showError('文件读取失败');
-                    };
-                    reader.readAsDataURL(file);
-                } else {
-                    const text = textContent.value;
-                    if (!text) {
-                        showError('请输入文本内容');
-                        return;
-                    }
-                    contentBase64 = btoa(unescape(encodeURIComponent(text)));
+                const file = fileInput.files[0];
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const contentBase64 = e.target.result.split(',')[1];
                     startUpload(path, message, contentBase64);
-                }
+                };
+                reader.onerror = function() {
+                    showError('文件读取失败');
+                };
+                reader.readAsDataURL(file);
             }
 
             function startUpload(path, message, contentBase64) {
