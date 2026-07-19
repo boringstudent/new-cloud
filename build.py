@@ -258,6 +258,27 @@ template = """
                 resize: none;
                 background: #f8f8f8;
             }}
+            .prop-table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            .prop-table td {{
+                padding: 10px 8px;
+                border-bottom: 1px solid #eee;
+                font-size: 14px;
+            }}
+            .prop-table td:first-child {{
+                color: #666;
+                width: 70px;
+                white-space: nowrap;
+            }}
+            .prop-table td:last-child {{
+                word-break: break-all;
+            }}
+            .folder-size {{
+                font-style: italic;
+                color: #999;
+            }}
         </style>
     </head>
     <body>
@@ -325,10 +346,19 @@ template = """
             </div>
         </div>
 
+        <div id="propertiesModal" class="modal-overlay">
+            <div class="modal-content">
+                <span class="modal-close" onclick="closePropertiesModal()">&times;</span>
+                <h2>属性</h2>
+                <div id="propertiesContent"></div>
+            </div>
+        </div>
+
         <div id="contextMenu" class="context-menu">
             <div class="context-menu-item" onclick="handleMenuAction('preview')">预览</div>
             <div class="context-menu-item" onclick="handleMenuAction('edit')">修改</div>
             <div class="context-menu-item" onclick="handleMenuAction('download')">下载</div>
+            <div class="context-menu-item" onclick="handleMenuAction('properties')">属性</div>
             <div class="context-menu-item danger" onclick="handleMenuAction('delete')">删除</div>
         </div>
 
@@ -431,6 +461,7 @@ template = """
                 var filePath = menuFileInfo.path;
                 var fileSha = menuFileInfo.sha;
                 var fileName = menuFileInfo.name;
+                var fileType = menuFileInfo.type || 'file';
                 
                 if (action === 'preview') {{
                     previewFile(filePath, fileName);
@@ -438,6 +469,8 @@ template = """
                     editFile(filePath, fileName);
                 }} else if (action === 'download') {{
                     downloadFile(filePath, fileName);
+                }} else if (action === 'properties') {{
+                    showProperties(filePath, fileName, fileType, fileSha);
                 }} else if (action === 'delete') {{
                     openDeleteModal(filePath, fileSha, fileName);
                 }}
@@ -906,13 +939,31 @@ template = """
                     var entry = document.createElement('a');
                     entry.href = baseUrl + encodeURIComponent(dir.name) + '/';
                     entry.className = 'entry';
+                    entry.setAttribute('data-path', dir.path);
                     var nameSpan = document.createElement('span');
                     nameSpan.textContent = dir.name + '/';
                     var infoSpan = document.createElement('span');
                     infoSpan.className = 'file-info';
                     var sizeSpan = document.createElement('span');
-                    sizeSpan.textContent = '-';
+                    sizeSpan.className = 'folder-size';
+                    sizeSpan.textContent = '...';
+                    
+                    var menuBtn = document.createElement('button');
+                    menuBtn.className = 'menu-btn';
+                    menuBtn.textContent = '⋮';
+                    menuBtn.onclick = function(e) {{
+                        e.stopPropagation();
+                        e.preventDefault();
+                        openContextMenu(e, {{
+                            path: dir.path,
+                            sha: dir.sha,
+                            name: dir.name,
+                            type: 'dir'
+                        }});
+                    }};
+                    
                     infoSpan.appendChild(sizeSpan);
+                    infoSpan.appendChild(menuBtn);
                     entry.appendChild(nameSpan);
                     entry.appendChild(infoSpan);
                     container.appendChild(entry);
@@ -942,7 +993,8 @@ template = """
                         openContextMenu(e, {{
                             path: file.path,
                             sha: file.sha,
-                            name: file.name
+                            name: file.name,
+                            type: 'file'
                         }});
                     }};
                     
@@ -955,7 +1007,109 @@ template = """
 
                 if (dirs.length === 0 && files.length === 0) {{
                     container.innerHTML = '<div class="loading">此目录为空</div>';
+                }} else {{
+                    calculateFolderSizes(dirs);
                 }}
+            }}
+
+            var treeCache = null;
+            var treeCacheTime = 0;
+
+            function calculateFolderSizes(dirs) {{
+                if (dirs.length === 0) return;
+                
+                var now = Date.now();
+                if (treeCache && (now - treeCacheTime) < 300000) {{
+                    updateFolderSizeDisplay(treeCache, dirs);
+                    return;
+                }}
+                
+                var branchXhr = new XMLHttpRequest();
+                branchXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/branches/' + DEFAULT_BRANCH, true);
+                branchXhr.onload = function() {{
+                    if (branchXhr.status === 200) {{
+                        var branchInfo = JSON.parse(branchXhr.responseText);
+                        var treeSha = branchInfo.commit.commit.tree.sha;
+                        
+                        var treeXhr = new XMLHttpRequest();
+                        treeXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/git/trees/' + treeSha + '?recursive=1', true);
+                        treeXhr.onload = function() {{
+                            if (treeXhr.status === 200) {{
+                                var treeData = JSON.parse(treeXhr.responseText);
+                                if (treeData.tree) {{
+                                    treeCache = treeData.tree;
+                                    treeCacheTime = Date.now();
+                                    updateFolderSizeDisplay(treeData.tree, dirs);
+                                }}
+                            }}
+                        }};
+                        treeXhr.send();
+                    }}
+                }};
+                branchXhr.send();
+            }}
+
+            function updateFolderSizeDisplay(tree, dirs) {{
+                var sizeMap = {{}};
+                tree.forEach(function(item) {{
+                    if (item.type === 'blob' && item.size) {{
+                        var parts = item.path.split('/');
+                        if (parts.length > 1) {{
+                            var parentDir = parts.slice(0, parts.length - 1).join('/');
+                            if (!sizeMap[parentDir]) sizeMap[parentDir] = 0;
+                            sizeMap[parentDir] += item.size;
+                        }}
+                    }}
+                }});
+                
+                dirs.forEach(function(dir) {{
+                    var totalSize = 0;
+                    tree.forEach(function(item) {{
+                        if (item.type === 'blob' && item.size && item.path.indexOf(dir.path + '/') === 0) {{
+                            totalSize += item.size;
+                        }}
+                    }});
+                    var span = document.querySelector('.entry[data-path="' + dir.path.replace(/"/g, '\\"') + '"] .folder-size');
+                    if (span) {{
+                        span.textContent = totalSize > 0 ? formatSize(totalSize) : '0B';
+                    }}
+                }});
+            }}
+
+            function showProperties(filePath, fileName, fileType, fileSha) {{
+                var content = document.getElementById('propertiesContent');
+                var html = '<table class="prop-table">';
+                html += '<tr><td>名称</td><td>' + fileName + '</td></tr>';
+                html += '<tr><td>路径</td><td>' + filePath + '</td></tr>';
+                html += '<tr><td>类型</td><td>' + (fileType === 'dir' ? '文件夹' : '文件') + '</td></tr>';
+                
+                if (fileType === 'dir') {{
+                    var dirSize = 0;
+                    var fileCount = 0;
+                    if (treeCache) {{
+                        treeCache.forEach(function(item) {{
+                            if (item.path.indexOf(filePath + '/') === 0) {{
+                                if (item.type === 'blob') {{
+                                    dirSize += (item.size || 0);
+                                    fileCount++;
+                                }}
+                            }}
+                        }});
+                    }}
+                    html += '<tr><td>大小</td><td>' + (treeCache ? formatSize(dirSize) : '获取中...') + '</td></tr>';
+                    html += '<tr><td>包含</td><td>' + fileCount + ' 个文件</td></tr>';
+                }} else {{
+                    html += '<tr><td>大小</td><td>' + formatSize(menuFileInfo._fileSize || 0) + '</td></tr>';
+                    html += '<tr><td>SHA</td><td style="font-size:12px;">' + (fileSha || '-') + '</td></tr>';
+                }}
+                
+                html += '</table>';
+                content.innerHTML = html;
+                document.getElementById('propertiesModal').classList.add('show');
+            }}
+
+            function closePropertiesModal() {{
+                document.getElementById('propertiesModal').classList.remove('show');
             }}
 
             function uploadFile() {{
