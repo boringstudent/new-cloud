@@ -496,6 +496,8 @@ template = """
 
                 document.getElementById('menuPreview').style.display = fileInfo.type === 'dir' ? 'none' : '';
                 document.getElementById('menuEdit').style.display = fileInfo.type === 'dir' ? 'none' : '';
+                document.getElementById('menuDownload').style.display = fileInfo.type === 'dir' ? 'none' : '';
+                document.getElementById('menuDelete').style.display = fileInfo.type === 'dir' ? 'none' : '';
 
                 var menu = document.getElementById('contextMenu');
                 var rect = e.target.getBoundingClientRect();
