@@ -258,7 +258,7 @@ template = """
                 <a href="../" style="font-size: 1.1em;">上级目录</a>
                 <button class="upload-btn" id="open-upload-btn" style="margin-left: 20px; border: none;">上传文件</button>
             </div>
-            FILECONTENT
+            <div id="file-list-container">FILECONTENT</div>
             <hr>
             <a style="text-decoration: none; color: #34495e; font-size: 15px; font-weight: 400;" href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank">闽ICP备2025107306号-1</a>
         </div>
@@ -434,6 +434,87 @@ template = """
                 uploadBtn.disabled = false;
             }
 
+            function refreshFileList(filePath) {
+                successMessage.textContent = '上传成功！正在刷新文件列表...';
+                fetchFileListFromGitHub();
+                setTimeout(function() {
+                    successMessage.textContent = '上传成功！文件列表已更新。';
+                }, 1000);
+            }
+
+            function fetchFileListFromGitHub() {
+                if (!GITHUB_APIKEY || !STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
+                    return;
+                }
+
+                const currentPath = window.location.pathname;
+                let repoPath = currentPath.replace('/index.html', '');
+                if (repoPath.startsWith('/')) {
+                    repoPath = repoPath.substring(1);
+                }
+
+                const url = 'https://api.github.com/repos/' + STORAGE_REPO_OWNER + '/' + STORAGE_REPO_NAME + '/contents/' + repoPath;
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
+                xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
+
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            updateFileList(data);
+                        } catch (e) {
+                            console.error('解析文件列表失败:', e);
+                        }
+                    }
+                };
+
+                xhr.onerror = function() {
+                    console.error('获取文件列表失败');
+                };
+
+                xhr.send();
+            }
+
+            function formatBytes(bytes) {
+                if (bytes === 0) return '0B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + sizes[i];
+            }
+
+            function updateFileList(items) {
+                const container = document.getElementById('file-list-container');
+                if (!container) return;
+
+                let content = '';
+
+                const dirs = items.filter(item => item.type === 'dir').sort((a, b) => a.name.localeCompare(b.name));
+                const files = items.filter(item => item.type === 'file').sort((a, b) => a.name.localeCompare(b.name));
+
+                for (const dir of dirs) {
+                    content += '<a href="' + dir.name + '/index.html" class="entry"><span>📂 ' + dir.name + '</span><span class="file-info"><span>-</span></span></a>';
+                }
+
+                for (const file of files) {
+                    if (file.name !== 'index.html' && file.name !== 'info.json' && file.name !== 'info.md' && file.name !== 'build.py' && file.name !== 'favicon.ico' && file.name !== 'CNAME' && file.name !== '404.html') {
+                        content += '<a href="' + file.name + '" class="entry"><span>📄 ' + file.name + '</span><span class="file-info"><span>' + formatBytes(file.size) + '</span></span></a>';
+                    }
+                }
+
+                container.innerHTML = content;
+            }
+
+            function startAutoRefresh() {
+                fetchFileListFromGitHub();
+                setInterval(fetchFileListFromGitHub, 60000);
+            }
+
+            window.addEventListener('load', startAutoRefresh);
+
             function updateProgress(percent, text) {
                 progressFill.style.width = percent + '%';
                 progressText.textContent = text;
@@ -509,9 +590,7 @@ template = """
                         if (xhr.status === 201 || xhr.status === 200) {
                             updateProgress(100, '上传成功！');
                             showSuccess();
-                            setTimeout(function() {
-                                window.location.reload();
-                            }, 3000);
+                            refreshFileList(targetPath.value.trim());
                         } else {
                             let errorMsg = '上传失败';
                             try {
