@@ -2,15 +2,15 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]  # 在推送到主分支时触发
+    branches: [ main, master ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # 允许工作流向 gh-pages 分支写入
-      pages: write     # 允许部署 Pages
-      id-token: write  # 允许 OIDC 认证
+      contents: write
+      pages: write
+      id-token: write
 
     steps:
     - name: Checkout code
@@ -29,7 +29,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.8.x'  # 使用最新的 Python 3 版本
+        python-version: '3.8.x'
 
     - name: Install dependencies
       run: pip install markdown
@@ -41,17 +41,14 @@ jobs:
         ADMIN: ${{ secrets.ADMIN }}
         REPO_NAME: ${{ secrets.REPO_NAME }}
 
-    # 配置Pages环境
     - name: Configure Pages
       uses: actions/configure-pages@v4
 
-    # 直接上传构建产物（不使用run_id）
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
         path: ./build
 
-    # 部署到GitHub Pages
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4

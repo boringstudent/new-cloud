@@ -307,6 +307,18 @@ template = """
             const GITHUB_APIKEY = '__GITHUB_APIKEY__';
             const STORAGE_REPO_OWNER = '__STORAGE_REPO_OWNER__';
             const STORAGE_REPO_NAME = '__STORAGE_REPO_NAME__';
+            console.log('=== 存储仓库配置 ===');
+            console.log('STORAGE_REPO_OWNER:', STORAGE_REPO_OWNER);
+            console.log('STORAGE_REPO_NAME:', STORAGE_REPO_NAME);
+            console.log('GITHUB_APIKEY:', GITHUB_APIKEY ? '已配置 (' + GITHUB_APIKEY.substring(0, 10) + '...)' : '未配置');
+            
+            if (!STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
+                console.error('错误：存储仓库配置不完整！');
+            } else if (!STORAGE_REPO_OWNER.includes('/') && !STORAGE_REPO_NAME.includes('/')) {
+                console.log('配置格式正确');
+            } else {
+                console.error('错误：配置格式不正确！');
+            }
 
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
@@ -405,6 +417,7 @@ template = """
 
             function fetchFileListFromGitHub() {
                 if (!GITHUB_APIKEY || !STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
+                    console.log('配置不完整，跳过刷新');
                     return;
                 }
 
@@ -415,6 +428,7 @@ template = """
                 }
 
                 const url = 'https://api.github.com/repos/' + STORAGE_REPO_OWNER + '/' + STORAGE_REPO_NAME + '/contents/' + repoPath;
+                console.log('请求URL:', url);
 
                 const xhr = new XMLHttpRequest();
                 xhr.open('GET', url, true);
