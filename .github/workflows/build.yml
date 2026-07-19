@@ -26,6 +26,8 @@ jobs:
 
     - name: Run build script
       run: python build.py  # 执行构建脚本生成 build 文件夹
+      env:
+        CLOUD: ${{ secrets.CLOUD }}
 
     # 配置Pages环境
     - name: Configure Pages
