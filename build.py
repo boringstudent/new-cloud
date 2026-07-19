@@ -429,6 +429,11 @@ template = """
                 if (repoPath.startsWith('/')) {
                     repoPath = repoPath.substring(1);
                 }
+                if (repoPath.startsWith('new-cloud/')) {
+                    repoPath = repoPath.substring('new-cloud/'.length);
+                } else if (repoPath === 'new-cloud') {
+                    repoPath = '';
+                }
 
                 const url = 'https://api.github.com/repos/' + STORAGE_REPO_OWNER + '/' + STORAGE_REPO_NAME + '/contents/' + repoPath;
                 console.log('请求URL:', url);
