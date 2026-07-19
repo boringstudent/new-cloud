@@ -261,7 +261,7 @@ template = """
             <div style="margin: 20px 0;">
                 <a href="../" style="font-size: 1.1em;">上级目录</a>
                 <button class="upload-btn" id="open-upload-btn" style="margin-left: 20px; border: none;">上传文件</button>
-                <button class="btn" id="refresh-btn" style="margin-left: 10px; padding: 6px 12px; font-size: 14px;">刷新列表</button>
+                <button class="btn" id="refresh-btn" style="margin-left: 10px;">刷新列表</button>
             </div>
             <div id="file-list-container">FILECONTENT</div>
         </div>
@@ -272,6 +272,17 @@ template = """
                 <h1>文件上传</h1>
                 
                 <div id="upload-form">
+                    <div class="form-group">
+                        <label for="login-user">用户名</label>
+                        <input type="text" id="login-user" placeholder="请输入用户名">
+                    </div>
+                    <div class="form-group">
+                        <label for="login-pass">密码</label>
+                        <div style="position: relative;">
+                            <input type="password" id="login-pass" placeholder="请输入密码" style="width: calc(100% - 40px);">
+                            <button type="button" id="toggle-pass" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); border: none; background: transparent; cursor: pointer; font-size: 14px; color: #666;">显示</button>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label for="file-input">选择文件</label>
                         <input type="file" id="file-input" accept="*">
@@ -305,29 +316,35 @@ template = """
         <script>
             const REPO_OWNER = '__REPO_OWNER__';
             const REPO_NAME = '__REPO_NAME__';
-            const ADMIN_USER = '__ADMIN_USER__';
-            const ADMIN_PASS = '__ADMIN_PASS__';
-            const GITHUB_APIKEY = '__GITHUB_APIKEY__';
             const STORAGE_REPO_OWNER = '__STORAGE_REPO_OWNER__';
             const STORAGE_REPO_NAME = '__STORAGE_REPO_NAME__';
-            console.log('=== 存储仓库配置 ===');
-            console.log('STORAGE_REPO_OWNER:', STORAGE_REPO_OWNER);
-            console.log('STORAGE_REPO_NAME:', STORAGE_REPO_NAME);
-            console.log('GITHUB_APIKEY:', GITHUB_APIKEY ? '已配置 (' + GITHUB_APIKEY.substring(0, 10) + '...)' : '未配置');
-            
-            if (!STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
-                console.error('错误：存储仓库配置不完整！');
-            } else if (!STORAGE_REPO_OWNER.includes('/') && !STORAGE_REPO_NAME.includes('/')) {
-                console.log('配置格式正确');
-            } else {
-                console.error('错误：配置格式不正确！');
-            }
+
+            const Auth = (function() {
+                const USER = '__ADMIN_USER__';
+                const PASS = '__ADMIN_PASS__';
+                const KEY = '__GITHUB_APIKEY__';
+                
+                return {
+                    validate: function(user, pass) {
+                        return user === USER && pass === PASS;
+                    },
+                    getApiKey: function() {
+                        return KEY;
+                    },
+                    isConfigured: function() {
+                        return KEY && STORAGE_REPO_OWNER && STORAGE_REPO_NAME;
+                    }
+                };
+            })();
 
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
             const modalClose = document.getElementById('modal-close');
             const uploadForm = document.getElementById('upload-form');
 
+            const loginUser = document.getElementById('login-user');
+            const loginPass = document.getElementById('login-pass');
+            const togglePassBtn = document.getElementById('toggle-pass');
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
             const targetPath = document.getElementById('target-path');
@@ -366,6 +383,14 @@ template = """
             if (refreshBtn) {
                 refreshBtn.addEventListener('click', function() {
                     fetchFileListFromGitHub();
+                });
+            }
+
+            if (togglePassBtn) {
+                togglePassBtn.addEventListener('click', function() {
+                    const type = loginPass.type === 'password' ? 'text' : 'password';
+                    loginPass.type = type;
+                    togglePassBtn.textContent = type === 'password' ? '显示' : '隐藏';
                 });
             }
 
@@ -419,7 +444,7 @@ template = """
             }
 
             function fetchFileListFromGitHub() {
-                if (!GITHUB_APIKEY || !STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
+                if (!Auth.isConfigured()) {
                     console.log('配置不完整，跳过刷新');
                     return;
                 }
@@ -440,7 +465,7 @@ template = """
 
                 const xhr = new XMLHttpRequest();
                 xhr.open('GET', url, true);
-                xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
+                xhr.setRequestHeader('Authorization', 'token ' + Auth.getApiKey());
                 xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
 
                 xhr.onreadystatechange = function() {
@@ -504,6 +529,19 @@ template = """
             }
 
             function uploadFile() {
+                const user = loginUser.value.trim();
+                const pass = loginPass.value.trim();
+                
+                if (!user || !pass) {
+                    showError('请输入用户名和密码');
+                    return;
+                }
+                
+                if (!Auth.validate(user, pass)) {
+                    showError('用户名或密码错误');
+                    return;
+                }
+
                 const path = targetPath.value.trim();
                 const message = commitMsg.value.trim() || '上传文件';
 
@@ -517,7 +555,7 @@ template = """
                     return;
                 }
 
-                if (!GITHUB_APIKEY || !STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
+                if (!Auth.isConfigured()) {
                     showError('系统配置未完成');
                     return;
                 }
@@ -552,7 +590,7 @@ template = """
 
                 const xhr = new XMLHttpRequest();
                 xhr.open('PUT', url, true);
-                xhr.setRequestHeader('Authorization', 'token ' + GITHUB_APIKEY);
+                xhr.setRequestHeader('Authorization', 'token ' + Auth.getApiKey());
                 xhr.setRequestHeader('Accept', 'application/vnd.github.v3+json');
                 xhr.setRequestHeader('Content-Type', 'application/json');
 
