@@ -1070,19 +1070,7 @@ template = """
 """
 
 def copy_static_files(output_dir):
-    # 处理 404.html（模板变量替换）
-    src_404 = os.path.join('.', '404.html')
-    if os.path.exists(src_404):
-        with open(src_404, 'r', encoding='utf-8') as f:
-            content_404 = f.read()
-        content_404 = content_404.replace('{repo_owner}', REPO_OWNER)
-        content_404 = content_404.replace('{repo_name}', REPO_NAME)
-        content_404 = content_404.replace('{default_branch}', DEFAULT_BRANCH)
-        with open(os.path.join(output_dir, '404.html'), 'w', encoding='utf-8') as f:
-            f.write(content_404)
-
-    # 复制其他静态文件
-    static_files = ['favicon.ico', 'CNAME']
+    static_files = ['404.html', 'favicon.ico', 'CNAME']
     for filename in static_files:
         src = os.path.join('.', filename)
         dst = os.path.join(output_dir, filename)
