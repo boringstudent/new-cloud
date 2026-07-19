@@ -4,6 +4,7 @@ import shutil
 STORAGE_REPO = os.environ.get('CLOUD', 'boringstudent/new-cloud')
 REPO_OWNER = STORAGE_REPO.split('/')[0]
 REPO_NAME = STORAGE_REPO.split('/')[1] if '/' in STORAGE_REPO else STORAGE_REPO
+DEFAULT_BRANCH = os.environ.get('BRANCH', 'main')
 
 template = """
 <html>
@@ -223,6 +224,7 @@ template = """
         <script>
             var REPO_OWNER = '{repo_owner}';
             var REPO_NAME = '{repo_name}';
+            var DEFAULT_BRANCH = '{default_branch}';
 
             function openUploadModal() {{
                 document.getElementById('uploadModal').classList.add('show');
@@ -262,6 +264,10 @@ template = """
                 if (path === '') {{
                     return '';
                 }}
+                var parts = path.split('/');
+                if (parts.length > 0 && parts[0] === REPO_NAME) {{
+                    return parts.slice(1).join('/');
+                }}
                 return path.substring(1);
             }}
 
@@ -271,20 +277,39 @@ template = """
                 crumbs.innerHTML = '';
 
                 if (path === '') {{
-                    crumbs.innerHTML = '<span style="color: #666;">当前位置:</span> <strong>Home</strong>';
+                    var homeSpan = document.createElement('span');
+                    homeSpan.style.color = '#666';
+                    homeSpan.textContent = '当前位置:';
+                    var homeStrong = document.createElement('strong');
+                    homeStrong.textContent = ' Home';
+                    homeSpan.appendChild(homeStrong);
+                    crumbs.appendChild(homeSpan);
                     return;
                 }}
 
                 var parts = path.split('/');
-                var html = '<span style="color: #666;">当前位置:</span> ';
-                var currentPath = '';
+                var labelSpan = document.createElement('span');
+                labelSpan.style.color = '#666';
+                labelSpan.textContent = '当前位置: ';
+                crumbs.appendChild(labelSpan);
 
-                html += '<a href="/">Home</a>';
+                var homeLink = document.createElement('a');
+                homeLink.href = '/';
+                homeLink.textContent = 'Home';
+                crumbs.appendChild(homeLink);
+
+                var currentPath = '';
                 for (var i = 0; i < parts.length; i++) {{
                     currentPath += '/' + parts[i];
-                    html += ' / <a href="' + currentPath + '/">' + parts[i] + '</a>';
+                    var separator = document.createElement('span');
+                    separator.textContent = ' / ';
+                    crumbs.appendChild(separator);
+
+                    var link = document.createElement('a');
+                    link.href = currentPath + '/';
+                    link.textContent = parts[i];
+                    crumbs.appendChild(link);
                 }}
-                crumbs.innerHTML = html;
             }}
 
             function loadFileList() {{
@@ -336,9 +361,17 @@ template = """
 
                 dirs.forEach(function(dir) {{
                     var entry = document.createElement('a');
-                    entry.href = baseUrl + dir.name + '/';
+                    entry.href = baseUrl + encodeURIComponent(dir.name) + '/';
                     entry.className = 'entry';
-                    entry.innerHTML = '<span>' + dir.name + '/</span><span class="file-info"><span>-</span></span>';
+                    var nameSpan = document.createElement('span');
+                    nameSpan.textContent = dir.name + '/';
+                    var infoSpan = document.createElement('span');
+                    infoSpan.className = 'file-info';
+                    var sizeSpan = document.createElement('span');
+                    sizeSpan.textContent = '-';
+                    infoSpan.appendChild(sizeSpan);
+                    entry.appendChild(nameSpan);
+                    entry.appendChild(infoSpan);
                     container.appendChild(entry);
                 }});
 
@@ -347,10 +380,18 @@ template = """
                         return;
                     }}
                     var entry = document.createElement('a');
-                    entry.href = 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/main/' + file.path;
+                    entry.href = 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/' + DEFAULT_BRANCH + '/' + encodeURI(file.path);
                     entry.target = '_blank';
                     entry.className = 'entry';
-                    entry.innerHTML = '<span>' + file.name + '</span><span class="file-info"><span>' + formatSize(file.size) + '</span></span>';
+                    var nameSpan = document.createElement('span');
+                    nameSpan.textContent = file.name;
+                    var infoSpan = document.createElement('span');
+                    infoSpan.className = 'file-info';
+                    var sizeSpan = document.createElement('span');
+                    sizeSpan.textContent = formatSize(file.size);
+                    infoSpan.appendChild(sizeSpan);
+                    entry.appendChild(nameSpan);
+                    entry.appendChild(infoSpan);
                     container.appendChild(entry);
                 }});
 
@@ -498,7 +539,8 @@ if __name__ == "__main__":
     index_content = template.format(
         title='Home',
         repo_owner=REPO_OWNER,
-        repo_name=REPO_NAME
+        repo_name=REPO_NAME,
+        default_branch=DEFAULT_BRANCH
     )
     with open(os.path.join(output_dir, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(index_content)

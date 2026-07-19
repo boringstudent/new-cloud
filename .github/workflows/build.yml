@@ -21,13 +21,11 @@ jobs:
       with:
         python-version: '3.8.x'  # 使用最新的 Python 3 版本
 
-    - name: Install dependencies
-      run: pip install markdown
-
     - name: Run build script
       run: python build.py  # 执行构建脚本生成 build 文件夹
       env:
         CLOUD: ${{ secrets.CLOUD }}
+        BRANCH: ${{ secrets.BRANCH || 'main' }}
 
     # 配置Pages环境
     - name: Configure Pages
