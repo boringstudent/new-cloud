@@ -253,7 +253,7 @@
     </head>
     <body>
         <div class="container">
-            <h1 id="pageTitle">404 - 页面未找到</h1>
+            <h1 id="pageTitle">加载中...</h1>
             <div id="breadcrumbs" style="margin: 20px 0; font-size: 1.1em;"></div>
             <div id="fileListContainer" class="loading">加载中...</div>
         </div>
@@ -867,6 +867,7 @@
                     }} else if (xhr.status === 403) {{
                         container.innerHTML = '<div class="message error">API请求受限，请稍后重试</div>';
                     }} else if (xhr.status === 404) {{
+                        document.getElementById('pageTitle').textContent = '404 - 页面未找到';
                         container.innerHTML = '<div class="message error">目录不存在</div>';
                     }} else {{
                         container.innerHTML = '<div class="message error">获取文件列表失败，状态码: ' + xhr.status + '</div>';
