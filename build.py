@@ -327,6 +327,7 @@ template = """
 
         <div id="contextMenu" class="context-menu">
             <div class="context-menu-item" onclick="handleMenuAction('preview')">预览</div>
+            <div class="context-menu-item" onclick="handleMenuAction('edit')">修改</div>
             <div class="context-menu-item" onclick="handleMenuAction('download')">下载</div>
             <div class="context-menu-item danger" onclick="handleMenuAction('delete')">删除</div>
         </div>
@@ -433,6 +434,8 @@ template = """
                 
                 if (action === 'preview') {{
                     previewFile(filePath, fileName);
+                }} else if (action === 'edit') {{
+                    editFile(filePath, fileName);
                 }} else if (action === 'download') {{
                     downloadFile(filePath, fileName);
                 }} else if (action === 'delete') {{
@@ -491,6 +494,15 @@ template = """
                     video.controls = true;
                     video.className = 'preview-video';
                     content.appendChild(video);
+                }} else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].indexOf(ext) !== -1) {{
+                    content.innerHTML = '';
+                    var img = document.createElement('img');
+                    img.src = previewUrl;
+                    img.alt = fileName;
+                    img.style.maxWidth = '100%';
+                    img.style.maxHeight = '60vh';
+                    img.style.borderRadius = '8px';
+                    content.appendChild(img);
                 }} else {{
                     var xhr = new XMLHttpRequest();
                     xhr.open('GET', previewUrl, true);
@@ -499,10 +511,9 @@ template = """
                             var textarea = document.createElement('textarea');
                             textarea.className = 'preview-text';
                             textarea.value = xhr.responseText;
-                            textarea.readOnly = false;
+                            textarea.readOnly = true;
                             content.innerHTML = '';
                             content.appendChild(textarea);
-                            document.getElementById('previewActions').style.display = 'block';
                         }} else {{
                             content.innerHTML = '';
                             var msgDiv = document.createElement('div');
@@ -520,6 +531,57 @@ template = """
                     }};
                     xhr.send();
                 }}
+            }}
+
+            function editFile(filePath, fileName) {{
+                var ext = getFileExtension(fileName);
+                var previewUrl = 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/' + DEFAULT_BRANCH + '/' + encodeURI(filePath);
+                
+                previewFileInfo = {{
+                    path: filePath,
+                    name: fileName,
+                    ext: ext
+                }};
+                
+                document.getElementById('previewTitle').textContent = '编辑: ' + fileName;
+                var content = document.getElementById('previewContent');
+                content.innerHTML = '';
+                var loadingDiv = document.createElement('div');
+                loadingDiv.className = 'loading';
+                loadingDiv.textContent = '加载中...';
+                content.appendChild(loadingDiv);
+                document.getElementById('previewModal').classList.add('show');
+                document.getElementById('previewActions').style.display = 'none';
+                document.getElementById('previewMessage').className = 'message';
+                document.getElementById('previewMessage').textContent = '';
+                
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', previewUrl, true);
+                xhr.onload = function() {{
+                    if (xhr.status === 200) {{
+                        var textarea = document.createElement('textarea');
+                        textarea.className = 'preview-text';
+                        textarea.value = xhr.responseText;
+                        textarea.readOnly = false;
+                        content.innerHTML = '';
+                        content.appendChild(textarea);
+                        document.getElementById('previewActions').style.display = 'block';
+                    }} else {{
+                        content.innerHTML = '';
+                        var msgDiv = document.createElement('div');
+                        msgDiv.className = 'message error';
+                        msgDiv.textContent = '无法加载文件内容';
+                        content.appendChild(msgDiv);
+                    }}
+                }};
+                xhr.onerror = function() {{
+                    content.innerHTML = '';
+                    var msgDiv = document.createElement('div');
+                    msgDiv.className = 'message error';
+                    msgDiv.textContent = '网络错误，无法加载文件';
+                    content.appendChild(msgDiv);
+                }};
+                xhr.send();
             }}
 
             function closePreviewModal() {{
