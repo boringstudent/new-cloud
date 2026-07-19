@@ -290,7 +290,7 @@
             <div class="modal-content">
                 <span class="modal-close" onclick="closeDeleteModal()">&times;</span>
                 <h2>删除文件</h2>
-                <p style="color: #666; margin-bottom: 15px;">确定要删除文件 <strong id="deleteFileName"></strong> 吗？此操作不可撤销。</p>
+                <p style="color: #666; margin-bottom: 15px;">确定要删除 <strong id="deleteFileName"></strong> 吗？此操作不可撤销。</p>
                 <div class="form-group">
                     <label>用户名</label>
                     <input type="text" id="deleteUsername" placeholder="请输入用户名">
@@ -316,11 +316,20 @@
             </div>
         </div>
 
+        <div id="propertiesModal" class="modal-overlay">
+            <div class="modal-content preview-modal-content">
+                <span class="modal-close" onclick="document.getElementById('propertiesModal').classList.remove('show')">&times;</span>
+                <h2 id="propertiesTitle">属性</h2>
+                <div id="propertiesContent"></div>
+            </div>
+        </div>
+
         <div id="contextMenu" class="context-menu">
-            <div class="context-menu-item" onclick="handleMenuAction('preview')">预览</div>
-            <div class="context-menu-item" onclick="handleMenuAction('edit')">修改</div>
-            <div class="context-menu-item" onclick="handleMenuAction('download')">下载</div>
-            <div class="context-menu-item danger" onclick="handleMenuAction('delete')">删除</div>
+            <div class="context-menu-item" id="menuProperties" onclick="handleMenuAction('properties')">属性</div>
+            <div class="context-menu-item" id="menuPreview" onclick="handleMenuAction('preview')">预览</div>
+            <div class="context-menu-item" id="menuEdit" onclick="handleMenuAction('edit')">修改</div>
+            <div class="context-menu-item" id="menuDownload" onclick="handleMenuAction('download')">下载</div>
+            <div class="context-menu-item danger" id="menuDelete" onclick="handleMenuAction('delete')">删除</div>
         </div>
 
         <script>
@@ -330,6 +339,7 @@
 
             var menuFileInfo = {{}};
             var previewFileInfo = {{}};
+            var fileTreeCache = null;
 
             setInterval(function() {{
                 loadFileList();
@@ -365,6 +375,87 @@
                 return size.toFixed(1) + 'PB';
             }}
 
+            function fetchFolderSizes() {{
+                if (fileTreeCache) {{
+                    updateFolderSizes();
+                    return;
+                }}
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/commits/' + DEFAULT_BRANCH, true);
+                xhr.onload = function() {{
+                    if (xhr.status === 200) {{
+                        try {{
+                            var commitData = JSON.parse(xhr.responseText);
+                            var treeSha = commitData.commit.tree.sha;
+                            var treeXhr = new XMLHttpRequest();
+                            treeXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/git/trees/' + treeSha + '?recursive=1', true);
+                            treeXhr.onload = function() {{
+                                if (treeXhr.status === 200) {{
+                                    try {{
+                                        var data = JSON.parse(treeXhr.responseText);
+                                        fileTreeCache = data.tree || [];
+                                        updateFolderSizes();
+                                    }} catch (e) {{}}
+                                }}
+                            }};
+                            treeXhr.send();
+                        }} catch (e) {{}}
+                    }}
+                }};
+                xhr.send();
+            }}
+
+            function updateFolderSizes() {{
+                if (!fileTreeCache) return;
+                var sizeSpans = document.querySelectorAll('.dir-size');
+                sizeSpans.forEach(function(span) {{
+                    var dirPath = span.getAttribute('data-path');
+                    if (!dirPath) return;
+                    var totalSize = 0;
+                    var prefix = dirPath + '/';
+                    fileTreeCache.forEach(function(item) {{
+                        if (item.type === 'blob' && item.path && item.path.indexOf(prefix) === 0) {{
+                            totalSize += (item.size || 0);
+                        }}
+                    }});
+                    span.textContent = formatSize(totalSize);
+                }});
+            }}
+
+            function showProperties(filePath, fileName, fileType) {{
+                document.getElementById('propertiesTitle').textContent = '属性: ' + fileName;
+                var content = document.getElementById('propertiesContent');
+                var propsHtml = '<div style="padding: 10px; line-height: 2;">';
+                propsHtml += '<p><strong>名称:</strong> ' + fileName + '</p>';
+                propsHtml += '<p><strong>类型:</strong> ' + (fileType === 'dir' ? '文件夹' : '文件') + '</p>';
+                propsHtml += '<p><strong>路径:</strong> ' + filePath + '</p>';
+                if (fileType === 'dir') {{
+                    var fileCount = 0, dirCount = 0, totalSize = 0;
+                    if (fileTreeCache) {{
+                        var prefix = filePath + '/';
+                        fileTreeCache.forEach(function(item) {{
+                            if (item.path && item.path.indexOf(prefix) === 0) {{
+                                if (item.type === 'blob') {{ fileCount++; totalSize += (item.size || 0); }}
+                                else if (item.type === 'tree') {{ dirCount++; }}
+                            }}
+                        }});
+                    }}
+                    propsHtml += '<p><strong>包含文件:</strong> ' + fileCount + ' 个</p>';
+                    propsHtml += '<p><strong>包含子文件夹:</strong> ' + dirCount + ' 个</p>';
+                    propsHtml += '<p><strong>总大小:</strong> ' + formatSize(totalSize) + '</p>';
+                }} else {{
+                    propsHtml += '<p><strong>SHA:</strong> <span style="font-size:12px;word-break:break-all;">' + (menuFileInfo.sha || 'N/A') + '</span></p>';
+                }}
+                propsHtml += '</div>';
+                content.innerHTML = propsHtml;
+                document.getElementById('propertiesModal').classList.add('show');
+            }}
+
+            function downloadFolder(filePath, fileName) {{
+                var url = 'https://github.com/' + REPO_OWNER + '/' + REPO_NAME + '/archive/refs/heads/' + DEFAULT_BRANCH + '.zip';
+                window.open(url, '_blank');
+            }}
+
             var deleteFilePath = '';
             var deleteFileSha = '';
 
@@ -393,14 +484,21 @@
                 e.stopPropagation();
                 e.preventDefault();
                 menuFileInfo = fileInfo;
-                
+
+                document.getElementById('menuPreview').style.display = fileInfo.type === 'dir' ? 'none' : '';
+                document.getElementById('menuEdit').style.display = fileInfo.type === 'dir' ? 'none' : '';
+
                 var menu = document.getElementById('contextMenu');
                 var rect = e.target.getBoundingClientRect();
-                
-                menu.style.left = rect.right + 'px';
+
+                if (rect.right + 120 > window.innerWidth) {{
+                    menu.style.left = (rect.left - 120) + 'px';
+                }} else {{
+                    menu.style.left = rect.right + 'px';
+                }}
                 menu.style.top = rect.top + 'px';
                 menu.classList.add('show');
-                
+
                 document.addEventListener('click', closeContextMenuHandler);
             }}
 
@@ -422,13 +520,20 @@
                 var filePath = menuFileInfo.path;
                 var fileSha = menuFileInfo.sha;
                 var fileName = menuFileInfo.name;
-                
-                if (action === 'preview') {{
+                var fileType = menuFileInfo.type;
+
+                if (action === 'properties') {{
+                    showProperties(filePath, fileName, fileType);
+                }} else if (action === 'preview') {{
                     previewFile(filePath, fileName);
                 }} else if (action === 'edit') {{
                     editFile(filePath, fileName);
                 }} else if (action === 'download') {{
-                    downloadFile(filePath, fileName);
+                    if (fileType === 'dir') {{
+                        downloadFolder(filePath, fileName);
+                    }} else {{
+                        downloadFile(filePath, fileName);
+                    }}
                 }} else if (action === 'delete') {{
                     openDeleteModal(filePath, fileSha, fileName);
                 }}
@@ -856,9 +961,12 @@
                             var pageTitle = document.getElementById('pageTitle');
                             if (currentPath === '') {{
                                 pageTitle.textContent = 'Home';
+                                document.title = 'Home - boring_student';
                             }} else {{
                                 var pathParts = currentPath.split('/');
-                                pageTitle.textContent = decodeURIComponent(pathParts[pathParts.length - 1]);
+                                var dirName = decodeURIComponent(pathParts[pathParts.length - 1]);
+                                pageTitle.textContent = dirName;
+                                document.title = dirName + ' - boring_student';
                             }}
                             renderFileList(items);
                         }} catch (e) {{
@@ -868,6 +976,7 @@
                         container.innerHTML = '<div class="message error">API请求受限，请稍后重试</div>';
                     }} else if (xhr.status === 404) {{
                         document.getElementById('pageTitle').textContent = '404 - 页面未找到';
+                        document.title = '404 - 页面未找到 - boring_student';
                         container.innerHTML = '<div class="message error">目录不存在</div>';
                     }} else {{
                         container.innerHTML = '<div class="message error">获取文件列表失败，状态码: ' + xhr.status + '</div>';
@@ -903,8 +1012,26 @@
                     var infoSpan = document.createElement('span');
                     infoSpan.className = 'file-info';
                     var sizeSpan = document.createElement('span');
+                    sizeSpan.className = 'dir-size';
+                    sizeSpan.setAttribute('data-path', dir.path);
                     sizeSpan.textContent = '-';
+
+                    var menuBtn = document.createElement('button');
+                    menuBtn.className = 'menu-btn';
+                    menuBtn.textContent = '⋮';
+                    menuBtn.onclick = function(e) {{
+                        e.stopPropagation();
+                        e.preventDefault();
+                        openContextMenu(e, {{
+                            path: dir.path,
+                            sha: dir.sha,
+                            name: dir.name,
+                            type: 'dir'
+                        }});
+                    }};
+
                     infoSpan.appendChild(sizeSpan);
+                    infoSpan.appendChild(menuBtn);
                     entry.appendChild(nameSpan);
                     entry.appendChild(infoSpan);
                     container.appendChild(entry);
@@ -934,7 +1061,8 @@
                         openContextMenu(e, {{
                             path: file.path,
                             sha: file.sha,
-                            name: file.name
+                            name: file.name,
+                            type: 'file'
                         }});
                     }};
                     
@@ -948,6 +1076,8 @@
                 if (dirs.length === 0 && files.length === 0) {{
                     container.innerHTML = '<div class="loading">此目录为空</div>';
                 }}
+
+                fetchFolderSizes();
             }}
 
             function uploadFile() {{
