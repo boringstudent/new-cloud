@@ -293,8 +293,12 @@
                     <input type="password" id="password" placeholder="请输入密码">
                 </div>
                 <div class="form-group">
-                    <label>选择文件</label>
-                    <input type="file" id="fileInput">
+                    <label>选择文件（可多选）</label>
+                    <input type="file" id="fileInput" multiple>
+                </div>
+                <div class="form-group">
+                    <label>或选择文件夹</label>
+                    <input type="file" id="folderInput" webkitdirectory>
                 </div>
                 <div class="progress-container" style="display: none;">
                     <div class="progress-bar">
@@ -373,6 +377,8 @@
                 document.getElementById('uploadModal').classList.remove('show');
                 document.getElementById('uploadMessage').className = 'message';
                 document.getElementById('uploadMessage').textContent = '';
+                document.getElementById('fileInput').value = '';
+                document.getElementById('folderInput').value = '';
                 document.querySelector('.progress-container').style.display = 'none';
                 document.getElementById('progressFill').style.width = '0%';
                 document.getElementById('progressText').textContent = '0%';
@@ -1108,6 +1114,7 @@
                 var username = document.getElementById('username').value;
                 var password = document.getElementById('password').value;
                 var fileInput = document.getElementById('fileInput');
+                var folderInput = document.getElementById('folderInput');
                 var uploadBtn = document.getElementById('uploadBtn');
 
                 if (!username || !password) {{
@@ -1115,14 +1122,25 @@
                     return;
                 }}
 
-                if (!fileInput.files || fileInput.files.length === 0) {{
-                    showMessage('请选择要上传的文件', 'error');
+                var allFiles = [];
+                if (fileInput.files && fileInput.files.length > 0) {{
+                    for (var i = 0; i < fileInput.files.length; i++) {{
+                        allFiles.push({{file: fileInput.files[i], relativePath: fileInput.files[i].name}});
+                    }}
+                }}
+                if (folderInput.files && folderInput.files.length > 0) {{
+                    for (var i = 0; i < folderInput.files.length; i++) {{
+                        var f = folderInput.files[i];
+                        allFiles.push({{file: f, relativePath: f.webkitRelativePath || f.name}});
+                    }}
+                }}
+
+                if (allFiles.length === 0) {{
+                    showMessage('请选择要上传的文件或文件夹', 'error');
                     return;
                 }}
 
-                var file = fileInput.files[0];
                 uploadBtn.disabled = true;
-
                 showMessage('正在获取授权...', 'success');
 
                 var params = 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
@@ -1135,7 +1153,7 @@
                         try {{
                             var response = JSON.parse(xhr.responseText);
                             if (response.success && response.key) {{
-                                uploadToGitHub(response.key, file);
+                                uploadMultipleToGitHub(response.key, allFiles);
                             }} else {{
                                 showMessage('获取授权失败', 'error');
                                 uploadBtn.disabled = false;
@@ -1154,6 +1172,86 @@
                     uploadBtn.disabled = false;
                 }};
                 xhr.send();
+            }}
+
+            function uploadMultipleToGitHub(key, fileList) {{
+                var totalFiles = fileList.length;
+                var uploadedCount = 0;
+                var failedFiles = [];
+                var progressContainer = document.querySelector('.progress-container');
+                progressContainer.style.display = 'block';
+                document.getElementById('progressFill').style.width = '0%';
+                document.getElementById('progressText').textContent = '0/' + totalFiles;
+
+                function uploadNext(index) {{
+                    if (index >= fileList.length) {{
+                        var percent = 100;
+                        document.getElementById('progressFill').style.width = percent + '%';
+                        document.getElementById('progressText').textContent = totalFiles + '/' + totalFiles;
+                        if (failedFiles.length === 0) {{
+                            showMessage('全部上传成功！（共 ' + totalFiles + ' 个文件）', 'success');
+                        }} else {{
+                            showMessage('上传完成，' + uploadedCount + ' 个成功，' + failedFiles.length + ' 个失败', 'error');
+                        }}
+                        document.getElementById('uploadBtn').disabled = false;
+                        setTimeout(function() {{
+                            closeUploadModal();
+                            loadFileList();
+                        }}, 2500);
+                        return;
+                    }}
+
+                    var fileInfo = fileList[index];
+                    var file = fileInfo.file;
+                    var relativePath = fileInfo.relativePath;
+
+                    var percent = Math.round((index / totalFiles) * 100);
+                    document.getElementById('progressFill').style.width = percent + '%';
+                    document.getElementById('progressText').textContent = (index + 1) + '/' + totalFiles + ' ' + file.name;
+
+                    var reader = new FileReader();
+                    reader.onload = function(e) {{
+                        var base64Content = e.target.result.split(',')[1];
+                        var currentPath = getCurrentPath();
+                        var filePath = currentPath ? currentPath + '/' + relativePath : relativePath;
+
+                        var data = {{
+                            message: 'Upload: ' + relativePath,
+                            content: base64Content
+                        }};
+
+                        var uploadXhr = new XMLHttpRequest();
+                        var uploadUrl = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + filePath;
+                        uploadXhr.open('PUT', uploadUrl, true);
+                        uploadXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                        uploadXhr.setRequestHeader('Content-Type', 'application/json');
+
+                        uploadXhr.onload = function() {{
+                            if (uploadXhr.status === 200 || uploadXhr.status === 201) {{
+                                uploadedCount++;
+                                showMessage('已上传: ' + relativePath + ' (' + (index + 1) + '/' + totalFiles + ')', 'success');
+                            }} else {{
+                                var errMsg = '状态码: ' + uploadXhr.status;
+                                try {{
+                                    var errObj = JSON.parse(uploadXhr.responseText);
+                                    errMsg = errObj.message || errMsg;
+                                }} catch (ex) {{}}
+                                failedFiles.push(relativePath + ' - ' + errMsg);
+                            }}
+                            uploadNext(index + 1);
+                        }};
+
+                        uploadXhr.onerror = function() {{
+                            failedFiles.push(relativePath + ' - 网络错误');
+                            uploadNext(index + 1);
+                        }};
+
+                        uploadXhr.send(JSON.stringify(data));
+                    }};
+                    reader.readAsDataURL(file);
+                }}
+
+                uploadNext(0);
             }}
 
             function uploadToGitHub(key, file) {{
