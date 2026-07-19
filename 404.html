@@ -293,8 +293,12 @@
                     <input type="password" id="password" placeholder="请输入密码">
                 </div>
                 <div class="form-group">
-                    <label>选择文件</label>
-                    <input type="file" id="fileInput">
+                    <label>选择文件（可多选）</label>
+                    <input type="file" id="fileInput" multiple>
+                </div>
+                <div class="form-group">
+                    <label>或选择文件夹</label>
+                    <input type="file" id="folderInput" webkitdirectory>
                 </div>
                 <div class="progress-container" style="display: none;">
                     <div class="progress-bar">
@@ -345,6 +349,28 @@
             </div>
         </div>
 
+        <div id="renameModal" class="modal-overlay">
+            <div class="modal-content">
+                <span class="modal-close" onclick="closeRenameModal()">&times;</span>
+                <h2>重命名文件夹</h2>
+                <p style="color: #666; margin-bottom: 15px;">修改文件夹 <strong id="renameOldName"></strong> 的名称</p>
+                <div class="form-group">
+                    <label>新名称</label>
+                    <input type="text" id="renameNewName" placeholder="请输入新名称">
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="renameUsername" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="renamePassword" placeholder="请输入密码">
+                </div>
+                <button class="btn" onclick="confirmRename()" id="renameBtn" style="width: 100%;">确认重命名</button>
+                <div id="renameMessage" class="message"></div>
+            </div>
+        </div>
+
         <div id="contextMenu" class="context-menu">
             <div class="context-menu-item" onclick="handleMenuAction('preview')">预览</div>
             <div class="context-menu-item" onclick="handleMenuAction('edit')">修改</div>
@@ -353,6 +379,7 @@
             <div class="context-menu-item danger" onclick="handleMenuAction('delete')">删除</div>
         </div>
 
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
         <script>
             var REPO_OWNER = '{repo_owner}';
             var REPO_NAME = '{repo_name}';
@@ -373,6 +400,9 @@
                 document.getElementById('uploadModal').classList.remove('show');
                 document.getElementById('uploadMessage').className = 'message';
                 document.getElementById('uploadMessage').textContent = '';
+                document.getElementById('fileInput').value = '';
+                document.getElementById('folderInput').value = '';
+                document.getElementById('uploadBtn').disabled = false;
                 document.querySelector('.progress-container').style.display = 'none';
                 document.getElementById('progressFill').style.width = '0%';
                 document.getElementById('progressText').textContent = '0%';
@@ -397,11 +427,23 @@
 
             var deleteFilePath = '';
             var deleteFileSha = '';
+            var isFolderDelete = false;
+            var renameFilePath = '';
+            var renameOldName = '';
 
             function openDeleteModal(filePath, fileSha, fileName) {{
+                isFolderDelete = false;
                 deleteFilePath = filePath;
                 deleteFileSha = fileSha;
                 document.getElementById('deleteFileName').textContent = fileName;
+                document.getElementById('deleteModal').classList.add('show');
+            }}
+
+            function openDeleteFolderModal(filePath, fileName) {{
+                isFolderDelete = true;
+                deleteFilePath = filePath;
+                deleteFileSha = '';
+                document.getElementById('deleteFileName').textContent = fileName + '（文件夹，将递归删除所有内容）';
                 document.getElementById('deleteModal').classList.add('show');
             }}
 
@@ -454,16 +496,31 @@
                 var fileName = menuFileInfo.name;
                 var fileType = menuFileInfo.type || 'file';
                 
-                if (action === 'preview') {{
-                    previewFile(filePath, fileName);
-                }} else if (action === 'edit') {{
-                    editFile(filePath, fileName);
-                }} else if (action === 'download') {{
-                    downloadFile(filePath, fileName);
-                }} else if (action === 'properties') {{
-                    showProperties(filePath, fileName, fileType, fileSha);
-                }} else if (action === 'delete') {{
-                    openDeleteModal(filePath, fileSha, fileName);
+                if (fileType === 'dir') {{
+                    if (action === 'preview') {{
+                        var href = window.location.href.replace(/\/?$/, '');
+                        window.location.href = href + '/' + encodeURIComponent(fileName) + '/';
+                    }} else if (action === 'edit') {{
+                        openRenameModal(filePath, fileName);
+                    }} else if (action === 'download') {{
+                        downloadFolderAsZip(filePath, fileName);
+                    }} else if (action === 'properties') {{
+                        showProperties(filePath, fileName, fileType, fileSha);
+                    }} else if (action === 'delete') {{
+                        openDeleteFolderModal(filePath, fileName);
+                    }}
+                }} else {{
+                    if (action === 'preview') {{
+                        previewFile(filePath, fileName);
+                    }} else if (action === 'edit') {{
+                        editFile(filePath, fileName);
+                    }} else if (action === 'download') {{
+                        downloadFile(filePath, fileName);
+                    }} else if (action === 'properties') {{
+                        showProperties(filePath, fileName, fileType, fileSha);
+                    }} else if (action === 'delete') {{
+                        openDeleteModal(filePath, fileSha, fileName);
+                    }}
                 }}
             }}
 
@@ -754,7 +811,11 @@
                         try {{
                             var response = JSON.parse(xhr.responseText);
                             if (response.success && response.key) {{
-                                deleteFile(response.key, deleteFilePath, deleteFileSha);
+                                if (isFolderDelete) {{
+                                    deleteFolderRecursive(response.key);
+                                }} else {{
+                                    deleteFile(response.key, deleteFilePath, deleteFileSha);
+                                }}
                             }} else {{
                                 showDeleteMessage('获取授权失败', 'error');
                                 deleteBtn.disabled = false;
@@ -1104,10 +1165,364 @@
                 document.getElementById('propertiesModal').classList.remove('show');
             }}
 
+            function getSubFiles(folderPath, callback) {{
+                var branchXhr = new XMLHttpRequest();
+                branchXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/branches/' + DEFAULT_BRANCH, true);
+                branchXhr.onload = function() {{
+                    if (branchXhr.status === 200) {{
+                        try {{
+                            var branchInfo = JSON.parse(branchXhr.responseText);
+                            var treeSha = branchInfo.commit.commit.tree.sha;
+                            var treeXhr = new XMLHttpRequest();
+                            treeXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/git/trees/' + treeSha + '?recursive=1', true);
+                            treeXhr.onload = function() {{
+                                if (treeXhr.status === 200) {{
+                                    var treeData = JSON.parse(treeXhr.responseText);
+                                    var files = [];
+                                    if (treeData.tree) {{
+                                        treeData.tree.forEach(function(item) {{
+                                            if (item.type === 'blob' && item.path.indexOf(folderPath + '/') === 0) {{
+                                                files.push({{path: item.path, sha: item.sha, size: item.size}});
+                                            }}
+                                        }});
+                                    }}
+                                    callback(files);
+                                }} else {{
+                                    callback(null);
+                                }}
+                            }};
+                            treeXhr.onerror = function() {{ callback(null); }};
+                            treeXhr.send();
+                        }} catch (e) {{
+                            callback(null);
+                        }}
+                    }} else {{
+                        callback(null);
+                    }}
+                }};
+                branchXhr.onerror = function() {{ callback(null); }};
+                branchXhr.send();
+            }}
+
+            function openRenameModal(filePath, oldName) {{
+                renameFilePath = filePath;
+                renameOldName = oldName;
+                document.getElementById('renameOldName').textContent = oldName;
+                document.getElementById('renameNewName').value = oldName;
+                document.getElementById('renameMessage').className = 'message';
+                document.getElementById('renameMessage').textContent = '';
+                document.getElementById('renameUsername').value = '';
+                document.getElementById('renamePassword').value = '';
+                document.getElementById('renameBtn').disabled = false;
+                document.getElementById('renameModal').classList.add('show');
+            }}
+
+            function closeRenameModal() {{
+                document.getElementById('renameModal').classList.remove('show');
+                document.getElementById('renameMessage').className = 'message';
+                document.getElementById('renameMessage').textContent = '';
+                document.getElementById('renameUsername').value = '';
+                document.getElementById('renamePassword').value = '';
+            }}
+
+            function showRenameMessage(text, type) {{
+                var msg = document.getElementById('renameMessage');
+                msg.className = 'message ' + type;
+                msg.textContent = text;
+            }}
+
+            function confirmRename() {{
+                var username = document.getElementById('renameUsername').value;
+                var password = document.getElementById('renamePassword').value;
+                var newName = document.getElementById('renameNewName').value.trim();
+                var renameBtn = document.getElementById('renameBtn');
+
+                if (!username || !password) {{
+                    showRenameMessage('请输入用户名和密码', 'error');
+                    return;
+                }}
+                if (!newName || newName === renameOldName) {{
+                    showRenameMessage('请输入有效的新名称', 'error');
+                    return;
+                }}
+
+                renameBtn.disabled = true;
+                showRenameMessage('正在获取授权...', 'success');
+
+                var params = 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', 'https://api.boring-student.cn/?' + params, true);
+                xhr.onload = function() {{
+                    if (xhr.status === 200) {{
+                        try {{
+                            var response = JSON.parse(xhr.responseText);
+                            if (response.success && response.key) {{
+                                renameFolderFiles(response.key, newName);
+                            }} else {{
+                                showRenameMessage('获取授权失败', 'error');
+                                renameBtn.disabled = false;
+                            }}
+                        }} catch (e) {{
+                            showRenameMessage('解析授权响应失败', 'error');
+                            renameBtn.disabled = false;
+                        }}
+                    }} else {{
+                        showRenameMessage('获取授权失败，状态码: ' + xhr.status, 'error');
+                        renameBtn.disabled = false;
+                    }}
+                }};
+                xhr.onerror = function() {{
+                    showRenameMessage('网络错误', 'error');
+                    renameBtn.disabled = false;
+                }};
+                xhr.send();
+            }}
+
+            function renameFolderFiles(key, newName) {{
+                showRenameMessage('正在获取文件夹内容...', 'success');
+
+                getSubFiles(renameFilePath, function(files) {{
+                    if (files === null) {{
+                        showRenameMessage('获取文件夹内容失败', 'error');
+                        document.getElementById('renameBtn').disabled = false;
+                        return;
+                    }}
+
+                    if (files.length === 0) {{
+                        showRenameMessage('文件夹为空', 'error');
+                        document.getElementById('renameBtn').disabled = false;
+                        return;
+                    }}
+
+                    var oldPathParts = renameFilePath.split('/');
+                    var newPrefix = oldPathParts.slice(0, -1).join('/');
+                    if (newPrefix) newPrefix += '/';
+                    newPrefix += newName;
+
+                    showRenameMessage('正在重命名 ' + files.length + ' 个文件...', 'success');
+
+                    var doneCount = 0;
+                    var failedCount = 0;
+
+                    function processNext(index) {{
+                        if (index >= files.length) {{
+                            if (failedCount === 0) {{
+                                showRenameMessage('重命名成功！（共 ' + doneCount + ' 个文件）', 'success');
+                                setTimeout(function() {{
+                                    closeRenameModal();
+                                    loadFileList();
+                                }}, 1500);
+                            }} else {{
+                                showRenameMessage('完成，' + doneCount + ' 成功，' + failedCount + ' 失败', 'error');
+                                document.getElementById('renameBtn').disabled = false;
+                            }}
+                            return;
+                        }}
+
+                        var file = files[index];
+                        var oldFullPath = file.path;
+                        var relativePath = oldFullPath.substring(renameFilePath.length);
+                        var newFullPath = newPrefix + relativePath;
+
+                        var getXhr = new XMLHttpRequest();
+                        getXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(oldFullPath), true);
+                        getXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                        getXhr.onload = function() {{
+                            if (getXhr.status === 200) {{
+                                try {{
+                                    var fileData = JSON.parse(getXhr.responseText);
+                                    var createXhr = new XMLHttpRequest();
+                                    createXhr.open('PUT', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(newFullPath), true);
+                                    createXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                                    createXhr.setRequestHeader('Content-Type', 'application/json');
+                                    createXhr.onload = function() {{
+                                        if (createXhr.status === 200 || createXhr.status === 201) {{
+                                            var delXhr = new XMLHttpRequest();
+                                            delXhr.open('DELETE', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(oldFullPath), true);
+                                            delXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                                            delXhr.setRequestHeader('Content-Type', 'application/json');
+                                            delXhr.onload = function() {{
+                                                if (delXhr.status === 200) doneCount++;
+                                                else failedCount++;
+                                                showRenameMessage('重命名中... ' + (index + 1) + '/' + files.length, 'success');
+                                                processNext(index + 1);
+                                            }};
+                                            delXhr.onerror = function() {{ failedCount++; processNext(index + 1); }};
+                                            delXhr.send(JSON.stringify({{message: 'Rename: delete old ' + oldFullPath, sha: fileData.sha}}));
+                                        }} else {{
+                                            failedCount++;
+                                            processNext(index + 1);
+                                        }}
+                                    }};
+                                    createXhr.onerror = function() {{ failedCount++; processNext(index + 1); }};
+                                    createXhr.send(JSON.stringify({{message: 'Rename: ' + renameOldName + ' -> ' + newName, content: fileData.content}}));
+                                }} catch (e) {{
+                                    failedCount++;
+                                    processNext(index + 1);
+                                }}
+                            }} else {{
+                                failedCount++;
+                                processNext(index + 1);
+                            }}
+                        }};
+                        getXhr.onerror = function() {{ failedCount++; processNext(index + 1); }};
+                        getXhr.send();
+                    }}
+
+                    processNext(0);
+                }});
+            }}
+
+            function deleteFolderRecursive(key) {{
+                showDeleteMessage('正在获取文件夹内容...', 'success');
+
+                getSubFiles(deleteFilePath, function(files) {{
+                    if (files === null) {{
+                        showDeleteMessage('获取文件夹内容失败', 'error');
+                        document.getElementById('deleteBtn').disabled = false;
+                        isFolderDelete = false;
+                        return;
+                    }}
+
+                    if (files.length === 0) {{
+                        showDeleteMessage('文件夹为空', 'error');
+                        document.getElementById('deleteBtn').disabled = false;
+                        isFolderDelete = false;
+                        return;
+                    }}
+
+                    showDeleteMessage('正在删除 ' + files.length + ' 个文件...', 'success');
+                    deleteFolderStep(key, files, 0, 0, 0);
+                }});
+            }}
+
+            function deleteFolderStep(key, files, index, doneCount, failedCount) {{
+                if (index >= files.length) {{
+                    if (failedCount === 0) {{
+                        showDeleteMessage('删除成功！（共 ' + doneCount + ' 个文件）', 'success');
+                    }} else {{
+                        showDeleteMessage('完成，' + doneCount + ' 成功，' + failedCount + ' 失败', 'error');
+                    }}
+                    isFolderDelete = false;
+                    setTimeout(function() {{
+                        closeDeleteModal();
+                        loadFileList();
+                    }}, 2000);
+                    return;
+                }}
+
+                var file = files[index];
+                var getXhr = new XMLHttpRequest();
+                getXhr.open('GET', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(file.path), true);
+                getXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                getXhr.onload = function() {{
+                    if (getXhr.status === 200) {{
+                        try {{
+                            var fileData = JSON.parse(getXhr.responseText);
+                            var delXhr = new XMLHttpRequest();
+                            delXhr.open('DELETE', 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(file.path), true);
+                            delXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                            delXhr.setRequestHeader('Content-Type', 'application/json');
+                            delXhr.onload = function() {{
+                                var d = delXhr.status === 200 ? doneCount + 1 : doneCount;
+                                var f = delXhr.status === 200 ? failedCount : failedCount + 1;
+                                showDeleteMessage('删除中... ' + (index + 1) + '/' + files.length, 'success');
+                                deleteFolderStep(key, files, index + 1, d, f);
+                            }};
+                            delXhr.onerror = function() {{
+                                showDeleteMessage('删除中... ' + (index + 1) + '/' + files.length, 'success');
+                                deleteFolderStep(key, files, index + 1, doneCount, failedCount + 1);
+                            }};
+                            delXhr.send(JSON.stringify({{message: 'Delete: ' + file.path, sha: fileData.sha}}));
+                        }} catch (e) {{
+                            deleteFolderStep(key, files, index + 1, doneCount, failedCount + 1);
+                        }}
+                    }} else {{
+                        deleteFolderStep(key, files, index + 1, doneCount, failedCount + 1);
+                    }}
+                }};
+                getXhr.onerror = function() {{
+                    deleteFolderStep(key, files, index + 1, doneCount, failedCount + 1);
+                }};
+                getXhr.send();
+            }}
+
+            function downloadFolderAsZip(folderPath, folderName) {{
+                showMessage('正在获取文件夹内容...', 'success');
+                document.getElementById('uploadBtn').disabled = true;
+
+                getSubFiles(folderPath, function(files) {{
+                    if (files === null || files.length === 0) {{
+                        showMessage('文件夹为空或获取失败', 'error');
+                        document.getElementById('uploadBtn').disabled = false;
+                        return;
+                    }}
+
+                    showMessage('正在打包 ' + files.length + ' 个文件...', 'success');
+                    document.querySelector('.progress-container').style.display = 'block';
+
+                    var zip = new JSZip();
+                    var doneCount = 0;
+                    var failedCount = 0;
+                    var prefixRemove = folderPath + '/';
+
+                    function processNext(index) {{
+                        if (index >= files.length) {{
+                            document.getElementById('progressFill').style.width = '100%';
+                            document.getElementById('progressText').textContent = '生成压缩包...';
+
+                            zip.generateAsync({{type: 'blob'}}, function(meta) {{
+                                document.getElementById('progressText').textContent = Math.round(meta.percent) + '%';
+                            }}).then(function(blob) {{
+                                var url = URL.createObjectURL(blob);
+                                var a = document.createElement('a');
+                                a.href = url;
+                                a.download = folderName + '.zip';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                setTimeout(function() {{ URL.revokeObjectURL(url); }}, 1000);
+                                showMessage('下载完成！（共 ' + (files.length - failedCount) + ' 个文件' + (failedCount > 0 ? '，' + failedCount + ' 个失败' : '') + '）', 'success');
+                                document.getElementById('uploadBtn').disabled = false;
+                            }});
+                            return;
+                        }}
+
+                        var file = files[index];
+                        var relativePath = file.path.substring(prefixRemove.length);
+
+                        var percent = Math.round((index / files.length) * 100);
+                        document.getElementById('progressFill').style.width = percent + '%';
+                        document.getElementById('progressText').textContent = (index + 1) + '/' + files.length + ' ' + relativePath;
+
+                        var xhr = new XMLHttpRequest();
+                        xhr.responseType = 'arraybuffer';
+                        xhr.open('GET', 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/' + DEFAULT_BRANCH + '/' + encodeURI(file.path).replace(/%2F/g, '/'), true);
+                        xhr.onload = function() {{
+                            if (xhr.status === 200) {{
+                                zip.file(relativePath, xhr.response);
+                                doneCount++;
+                            }} else {{
+                                failedCount++;
+                            }}
+                            processNext(index + 1);
+                        }};
+                        xhr.onerror = function() {{
+                            failedCount++;
+                            processNext(index + 1);
+                        }};
+                        xhr.send();
+                    }}
+
+                    processNext(0);
+                }});
+            }}
+
             function uploadFile() {{
                 var username = document.getElementById('username').value;
                 var password = document.getElementById('password').value;
                 var fileInput = document.getElementById('fileInput');
+                var folderInput = document.getElementById('folderInput');
                 var uploadBtn = document.getElementById('uploadBtn');
 
                 if (!username || !password) {{
@@ -1115,14 +1530,25 @@
                     return;
                 }}
 
-                if (!fileInput.files || fileInput.files.length === 0) {{
-                    showMessage('请选择要上传的文件', 'error');
+                var allFiles = [];
+                if (fileInput.files && fileInput.files.length > 0) {{
+                    for (var i = 0; i < fileInput.files.length; i++) {{
+                        allFiles.push({{file: fileInput.files[i], relativePath: fileInput.files[i].name}});
+                    }}
+                }}
+                if (folderInput.files && folderInput.files.length > 0) {{
+                    for (var i = 0; i < folderInput.files.length; i++) {{
+                        var f = folderInput.files[i];
+                        allFiles.push({{file: f, relativePath: f.webkitRelativePath || f.name}});
+                    }}
+                }}
+
+                if (allFiles.length === 0) {{
+                    showMessage('请选择要上传的文件或文件夹', 'error');
                     return;
                 }}
 
-                var file = fileInput.files[0];
                 uploadBtn.disabled = true;
-
                 showMessage('正在获取授权...', 'success');
 
                 var params = 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
@@ -1135,7 +1561,7 @@
                         try {{
                             var response = JSON.parse(xhr.responseText);
                             if (response.success && response.key) {{
-                                uploadToGitHub(response.key, file);
+                                uploadMultipleToGitHub(response.key, allFiles);
                             }} else {{
                                 showMessage('获取授权失败', 'error');
                                 uploadBtn.disabled = false;
@@ -1154,6 +1580,85 @@
                     uploadBtn.disabled = false;
                 }};
                 xhr.send();
+            }}
+
+            function uploadMultipleToGitHub(key, fileList) {{
+                var totalFiles = fileList.length;
+                var uploadedCount = 0;
+                var failedFiles = [];
+                var progressContainer = document.querySelector('.progress-container');
+                progressContainer.style.display = 'block';
+                document.getElementById('progressFill').style.width = '0%';
+                document.getElementById('progressText').textContent = '0/' + totalFiles;
+
+                function uploadNext(index) {{
+                    if (index >= fileList.length) {{
+                        document.getElementById('progressFill').style.width = '100%';
+                        document.getElementById('progressText').textContent = totalFiles + '/' + totalFiles;
+                        if (failedFiles.length === 0) {{
+                            showMessage('全部上传成功！（共 ' + totalFiles + ' 个文件）', 'success');
+                        }} else {{
+                            showMessage('上传完成，' + uploadedCount + ' 个成功，' + failedFiles.length + ' 个失败', 'error');
+                        }}
+                        document.getElementById('uploadBtn').disabled = false;
+                        setTimeout(function() {{
+                            closeUploadModal();
+                            loadFileList();
+                        }}, 2500);
+                        return;
+                    }}
+
+                    var fileInfo = fileList[index];
+                    var file = fileInfo.file;
+                    var relativePath = fileInfo.relativePath;
+
+                    var percent = Math.round((index / totalFiles) * 100);
+                    document.getElementById('progressFill').style.width = percent + '%';
+                    document.getElementById('progressText').textContent = (index + 1) + '/' + totalFiles + ' ' + file.name;
+
+                    var reader = new FileReader();
+                    reader.onload = function(e) {{
+                        var base64Content = e.target.result.split(',')[1];
+                        var currentPath = getCurrentPath();
+                        var filePath = currentPath ? currentPath + '/' + relativePath : relativePath;
+
+                        var data = {{
+                            message: 'Upload: ' + relativePath,
+                            content: base64Content
+                        }};
+
+                        var uploadXhr = new XMLHttpRequest();
+                        var uploadUrl = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + filePath;
+                        uploadXhr.open('PUT', uploadUrl, true);
+                        uploadXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                        uploadXhr.setRequestHeader('Content-Type', 'application/json');
+
+                        uploadXhr.onload = function() {{
+                            if (uploadXhr.status === 200 || uploadXhr.status === 201) {{
+                                uploadedCount++;
+                                showMessage('已上传: ' + relativePath + ' (' + (index + 1) + '/' + totalFiles + ')', 'success');
+                            }} else {{
+                                var errMsg = '状态码: ' + uploadXhr.status;
+                                try {{
+                                    var errObj = JSON.parse(uploadXhr.responseText);
+                                    errMsg = errObj.message || errMsg;
+                                }} catch (ex) {{}}
+                                failedFiles.push(relativePath + ' - ' + errMsg);
+                            }}
+                            uploadNext(index + 1);
+                        }};
+
+                        uploadXhr.onerror = function() {{
+                            failedFiles.push(relativePath + ' - 网络错误');
+                            uploadNext(index + 1);
+                        }};
+
+                        uploadXhr.send(JSON.stringify(data));
+                    }};
+                    reader.readAsDataURL(file);
+                }}
+
+                uploadNext(0);
             }}
 
             function uploadToGitHub(key, file) {{
