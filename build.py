@@ -13,6 +13,13 @@ REPO_OWNER = ''
 if '/' in GITHUB_REPOSITORY:
     REPO_OWNER = GITHUB_REPOSITORY.split('/')[0]
 
+STORAGE_REPO_OWNER = ''
+STORAGE_REPO_NAME = ''
+STORAGE_DIR = ''
+if '/' in REPO_NAME:
+    STORAGE_REPO_OWNER, STORAGE_REPO_NAME = REPO_NAME.split('/', 1)
+    STORAGE_DIR = STORAGE_REPO_NAME
+
 ADMIN_CREDENTIALS = os.environ.get('ADMIN', '')
 ADMIN_USER = ''
 ADMIN_PASS = ''
@@ -312,6 +319,8 @@ template = """
             const ADMIN_USER = '__ADMIN_USER__';
             const ADMIN_PASS = '__ADMIN_PASS__';
             const GITHUB_APIKEY = '__GITHUB_APIKEY__';
+            const STORAGE_REPO_OWNER = '__STORAGE_REPO_OWNER__';
+            const STORAGE_REPO_NAME = '__STORAGE_REPO_NAME__';
 
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
@@ -469,7 +478,7 @@ template = """
 
                 updateProgress(20, '正在连接服务器...');
 
-                const url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + path;
+                const url = 'https://api.github.com/repos/' + STORAGE_REPO_OWNER + '/' + STORAGE_REPO_NAME + '/contents/' + path;
                 
                 const body = {
                     message: message,
@@ -648,18 +657,23 @@ def generate_index_html(root_dir):
         index_content = index_content.replace('__GITHUB_APIKEY__', GITHUB_APIKEY)
         index_content = index_content.replace('__REPO_OWNER__', REPO_OWNER)
         index_content = index_content.replace('__REPO_NAME__', REPO_NAME)
+        index_content = index_content.replace('__STORAGE_REPO_OWNER__', STORAGE_REPO_OWNER)
+        index_content = index_content.replace('__STORAGE_REPO_NAME__', STORAGE_REPO_NAME)
 
         with open(os.path.join(root, 'index.html'), 'w', encoding='utf-8') as f:
             f.write(index_content)
 
 if __name__ == "__main__":
-    source_dir = '.'
+    storage_dir = STORAGE_DIR or '.'
     output_dir = 'build'
 
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    copy_files(source_dir, output_dir)
+    if os.path.exists(storage_dir):
+        copy_files(storage_dir, output_dir)
+    else:
+        copy_files('.', output_dir)
 
     generate_index_html(output_dir)

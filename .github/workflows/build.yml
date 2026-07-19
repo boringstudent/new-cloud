@@ -16,6 +16,16 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Extract storage directory name
+      id: extract-dir
+      run: echo "STORAGE_DIR=$(echo ${{ secrets.REPO_NAME }} | cut -d'/' -f2)" >> $GITHUB_OUTPUT
+
+    - name: Checkout storage repository
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ secrets.REPO_NAME }}
+        path: ${{ steps.extract-dir.outputs.STORAGE_DIR }}
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
