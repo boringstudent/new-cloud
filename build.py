@@ -198,6 +198,66 @@ template = """
             .delete-btn:hover {{
                 background: #c82333;
             }}
+            .menu-btn {{
+                background: transparent;
+                color: #666;
+                border: none;
+                padding: 5px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-left: 10px;
+                transition: all 0.3s;
+            }}
+            .menu-btn:hover {{
+                background: rgba(0,0,0,0.1);
+            }}
+            .context-menu {{
+                display: none;
+                position: absolute;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                z-index: 2000;
+                min-width: 120px;
+            }}
+            .context-menu.show {{
+                display: block;
+            }}
+            .context-menu-item {{
+                padding: 8px 12px;
+                cursor: pointer;
+                font-size: 14px;
+                color: #333;
+            }}
+            .context-menu-item:hover {{
+                background: #f0f0f0;
+            }}
+            .context-menu-item.danger {{
+                color: #dc3545;
+            }}
+            .preview-modal-content {{
+                max-width: 700px;
+                max-height: 80vh;
+                overflow-y: auto;
+            }}
+            .preview-audio, .preview-video {{
+                width: 100%;
+                max-width: 640px;
+                margin: 10px 0;
+            }}
+            .preview-text {{
+                width: 100%;
+                height: 300px;
+                padding: 10px;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                font-family: monospace;
+                font-size: 14px;
+                resize: none;
+                background: #f8f8f8;
+            }}
         </style>
     </head>
     <body>
@@ -253,10 +313,30 @@ template = """
             </div>
         </div>
 
+        <div id="previewModal" class="modal-overlay">
+            <div class="modal-content preview-modal-content">
+                <span class="modal-close" onclick="closePreviewModal()">&times;</span>
+                <h2 id="previewTitle">预览文件</h2>
+                <div id="previewContent"></div>
+            </div>
+        </div>
+
+        <div id="contextMenu" class="context-menu">
+            <div class="context-menu-item" onclick="handleMenuAction('preview')">预览</div>
+            <div class="context-menu-item" onclick="handleMenuAction('download')">下载</div>
+            <div class="context-menu-item danger" onclick="handleMenuAction('delete')">删除</div>
+        </div>
+
         <script>
             var REPO_OWNER = '{repo_owner}';
             var REPO_NAME = '{repo_name}';
             var DEFAULT_BRANCH = '{default_branch}';
+
+            var menuFileInfo = {{}};
+
+            setInterval(function() {{
+                loadFileList();
+            }}, 60000);
 
             function openUploadModal() {{
                 document.getElementById('uploadModal').classList.add('show');
@@ -310,6 +390,137 @@ template = """
                 var msg = document.getElementById('deleteMessage');
                 msg.className = 'message ' + type;
                 msg.textContent = text;
+            }}
+
+            function openContextMenu(e, fileInfo) {{
+                e.stopPropagation();
+                e.preventDefault();
+                menuFileInfo = fileInfo;
+                
+                var menu = document.getElementById('contextMenu');
+                var rect = e.target.getBoundingClientRect();
+                
+                menu.style.left = rect.right + 'px';
+                menu.style.top = rect.top + 'px';
+                menu.classList.add('show');
+                
+                document.addEventListener('click', closeContextMenuHandler);
+            }}
+
+            function closeContextMenu() {{
+                var menu = document.getElementById('contextMenu');
+                menu.classList.remove('show');
+                document.removeEventListener('click', closeContextMenuHandler);
+            }}
+
+            function closeContextMenuHandler(e) {{
+                var menu = document.getElementById('contextMenu');
+                if (!menu.contains(e.target)) {{
+                    closeContextMenu();
+                }}
+            }}
+
+            function handleMenuAction(action) {{
+                closeContextMenu();
+                var filePath = menuFileInfo.path;
+                var fileSha = menuFileInfo.sha;
+                var fileName = menuFileInfo.name;
+                
+                if (action === 'preview') {{
+                    previewFile(filePath, fileName);
+                }} else if (action === 'download') {{
+                    downloadFile(filePath, fileName);
+                }} else if (action === 'delete') {{
+                    openDeleteModal(filePath, fileSha, fileName);
+                }}
+            }}
+
+            function downloadFile(filePath, fileName) {{
+                var url = 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/' + DEFAULT_BRANCH + '/' + encodeURI(filePath);
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }}
+
+            function getFileExtension(fileName) {{
+                var parts = fileName.split('.');
+                return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+            }}
+
+            function previewFile(filePath, fileName) {{
+                var ext = getFileExtension(fileName);
+                var previewUrl = 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/' + DEFAULT_BRANCH + '/' + encodeURI(filePath);
+                
+                document.getElementById('previewTitle').textContent = '预览: ' + fileName;
+                var content = document.getElementById('previewContent');
+                content.innerHTML = '';
+                var loadingDiv = document.createElement('div');
+                loadingDiv.className = 'loading';
+                loadingDiv.textContent = '加载中...';
+                content.appendChild(loadingDiv);
+                document.getElementById('previewModal').classList.add('show');
+                
+                if (['mp3', 'wav', 'ogg', 'aac', 'flac'].indexOf(ext) !== -1) {{
+                    content.innerHTML = '';
+                    var audio = document.createElement('audio');
+                    audio.src = previewUrl;
+                    audio.controls = true;
+                    audio.className = 'preview-audio';
+                    content.appendChild(audio);
+                }} else if (['mp4', 'webm', 'ogg', 'avi', 'mov'].indexOf(ext) !== -1) {{
+                    content.innerHTML = '';
+                    var video = document.createElement('video');
+                    video.src = previewUrl;
+                    video.controls = true;
+                    video.className = 'preview-video';
+                    content.appendChild(video);
+                }} else if (['txt', 'json', 'md', 'log', 'xml', 'html', 'js', 'css', 'py', 'java', 'cpp', 'c', 'h', 'php'].indexOf(ext) !== -1) {{
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', previewUrl, true);
+                    xhr.onload = function() {{
+                        if (xhr.status === 200) {{
+                            var textarea = document.createElement('textarea');
+                            textarea.className = 'preview-text';
+                            textarea.value = xhr.responseText;
+                            textarea.readOnly = true;
+                            content.innerHTML = '';
+                            content.appendChild(textarea);
+                        }} else {{
+                            content.innerHTML = '';
+                            var msgDiv = document.createElement('div');
+                            msgDiv.className = 'message error';
+                            msgDiv.textContent = '无法加载文件内容';
+                            content.appendChild(msgDiv);
+                        }}
+                    }};
+                    xhr.onerror = function() {{
+                        content.innerHTML = '';
+                        var msgDiv = document.createElement('div');
+                        msgDiv.className = 'message error';
+                        msgDiv.textContent = '网络错误，无法加载文件';
+                        content.appendChild(msgDiv);
+                    }};
+                    xhr.send();
+                }} else {{
+                    content.innerHTML = '';
+                    var loadingDiv = document.createElement('div');
+                    loadingDiv.className = 'loading';
+                    loadingDiv.textContent = '不支持该类型文件的预览';
+                    var link = document.createElement('a');
+                    link.href = previewUrl;
+                    link.target = '_blank';
+                    link.textContent = '点击下载';
+                    content.appendChild(loadingDiv);
+                    content.appendChild(document.createElement('br'));
+                    content.appendChild(link);
+                }}
+            }}
+
+            function closePreviewModal() {{
+                document.getElementById('previewModal').classList.remove('show');
             }}
 
             function confirmDelete() {{
@@ -530,20 +741,21 @@ template = """
                     var sizeSpan = document.createElement('span');
                     sizeSpan.textContent = formatSize(file.size);
                     
-                    var deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-btn';
-                    deleteBtn.textContent = '删除';
-                    deleteBtn.dataset.filePath = file.path;
-                    deleteBtn.dataset.fileSha = file.sha;
-                    deleteBtn.dataset.fileName = file.name;
-                    deleteBtn.onclick = function(e) {{
+                    var menuBtn = document.createElement('button');
+                    menuBtn.className = 'menu-btn';
+                    menuBtn.textContent = '⋮';
+                    menuBtn.onclick = function(e) {{
                         e.stopPropagation();
                         e.preventDefault();
-                        openDeleteModal(this.dataset.filePath, this.dataset.fileSha, this.dataset.fileName);
+                        openContextMenu(e, {{
+                            path: file.path,
+                            sha: file.sha,
+                            name: file.name
+                        }});
                     }};
                     
                     infoSpan.appendChild(sizeSpan);
-                    infoSpan.appendChild(deleteBtn);
+                    infoSpan.appendChild(menuBtn);
                     entry.appendChild(nameSpan);
                     entry.appendChild(infoSpan);
                     container.appendChild(entry);
