@@ -1070,7 +1070,7 @@ template = """
 """
 
 def copy_static_files(output_dir):
-    static_files = ['404.html', 'favicon.ico', 'CNAME']
+    static_files = ['favicon.ico', 'CNAME']
     for filename in static_files:
         src = os.path.join('.', filename)
         dst = os.path.join(output_dir, filename)
@@ -1094,5 +1094,16 @@ if __name__ == "__main__":
     )
     with open(os.path.join(output_dir, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(index_content)
+
+    with open('404.html', 'r', encoding='utf-8') as f:
+        template_404 = f.read()
+    html_404 = template_404.format(
+        title='404 - 页面未找到',
+        repo_owner=REPO_OWNER,
+        repo_name=REPO_NAME,
+        default_branch=DEFAULT_BRANCH
+    )
+    with open(os.path.join(output_dir, '404.html'), 'w', encoding='utf-8') as f:
+        f.write(html_404)
 
     print(f'Build completed. Storage repo: {REPO_OWNER}/{REPO_NAME}')
