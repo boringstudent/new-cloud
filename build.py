@@ -184,6 +184,20 @@ template = """
                 color: #666;
                 padding: 20px;
             }}
+            .delete-btn {{
+                background: #dc3545;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                margin-left: 10px;
+                transition: background 0.3s;
+            }}
+            .delete-btn:hover {{
+                background: #c82333;
+            }}
         </style>
     </head>
     <body>
@@ -221,6 +235,24 @@ template = """
             </div>
         </div>
 
+        <div id="deleteModal" class="modal-overlay">
+            <div class="modal-content">
+                <span class="modal-close" onclick="closeDeleteModal()">&times;</span>
+                <h2>删除文件</h2>
+                <p style="color: #666; margin-bottom: 15px;">确定要删除文件 <strong id="deleteFileName"></strong> 吗？此操作不可撤销。</p>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="deleteUsername" placeholder="请输入用户名">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="deletePassword" placeholder="请输入密码">
+                </div>
+                <button class="btn" onclick="confirmDelete()" id="deleteBtn" style="width: 100%;">确认删除</button>
+                <div id="deleteMessage" class="message"></div>
+            </div>
+        </div>
+
         <script>
             var REPO_OWNER = '{repo_owner}';
             var REPO_NAME = '{repo_name}';
@@ -254,6 +286,114 @@ template = """
                     size /= 1024.0;
                 }}
                 return size.toFixed(1) + 'PB';
+            }}
+
+            var deleteFilePath = '';
+            var deleteFileSha = '';
+
+            function openDeleteModal(filePath, fileSha, fileName) {{
+                deleteFilePath = filePath;
+                deleteFileSha = fileSha;
+                document.getElementById('deleteFileName').textContent = fileName;
+                document.getElementById('deleteModal').classList.add('show');
+            }}
+
+            function closeDeleteModal() {{
+                document.getElementById('deleteModal').classList.remove('show');
+                document.getElementById('deleteMessage').className = 'message';
+                document.getElementById('deleteMessage').textContent = '';
+                document.getElementById('deleteUsername').value = '';
+                document.getElementById('deletePassword').value = '';
+            }}
+
+            function showDeleteMessage(text, type) {{
+                var msg = document.getElementById('deleteMessage');
+                msg.className = 'message ' + type;
+                msg.textContent = text;
+            }}
+
+            function confirmDelete() {{
+                var username = document.getElementById('deleteUsername').value;
+                var password = document.getElementById('deletePassword').value;
+                var deleteBtn = document.getElementById('deleteBtn');
+
+                if (!username || !password) {{
+                    showDeleteMessage('请输入用户名和密码', 'error');
+                    return;
+                }}
+
+                deleteBtn.disabled = true;
+                showDeleteMessage('正在获取授权...', 'success');
+
+                var params = 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
+                var keyUrl = 'https://api.boring-student.cn/?' + params;
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', keyUrl, true);
+                xhr.onload = function() {{
+                    if (xhr.status === 200) {{
+                        try {{
+                            var response = JSON.parse(xhr.responseText);
+                            if (response.success && response.key) {{
+                                deleteFile(response.key, deleteFilePath, deleteFileSha);
+                            }} else {{
+                                showDeleteMessage('获取授权失败', 'error');
+                                deleteBtn.disabled = false;
+                            }}
+                        }} catch (e) {{
+                            showDeleteMessage('解析授权响应失败', 'error');
+                            deleteBtn.disabled = false;
+                        }}
+                    }} else {{
+                        showDeleteMessage('获取授权失败，状态码: ' + xhr.status, 'error');
+                        deleteBtn.disabled = false;
+                    }}
+                }};
+                xhr.onerror = function() {{
+                    showDeleteMessage('网络错误，无法获取授权', 'error');
+                    deleteBtn.disabled = false;
+                }};
+                xhr.send();
+            }}
+
+            function deleteFile(key, filePath, sha) {{
+                showDeleteMessage('正在删除...', 'success');
+
+                var data = {{
+                    message: 'Delete file: ' + filePath,
+                    sha: sha
+                }};
+
+                var deleteXhr = new XMLHttpRequest();
+                var deleteUrl = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(filePath);
+                deleteXhr.open('DELETE', deleteUrl, true);
+                deleteXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                deleteXhr.setRequestHeader('Content-Type', 'application/json');
+
+                deleteXhr.onload = function() {{
+                    if (deleteXhr.status === 200 || deleteXhr.status === 201) {{
+                        showDeleteMessage('删除成功！', 'success');
+                        setTimeout(function() {{
+                            closeDeleteModal();
+                            loadFileList();
+                        }}, 1500);
+                    }} else {{
+                        try {{
+                            var error = JSON.parse(deleteXhr.responseText);
+                            showDeleteMessage('删除失败: ' + (error.message || '未知错误'), 'error');
+                        }} catch (e) {{
+                            showDeleteMessage('删除失败，状态码: ' + deleteXhr.status, 'error');
+                        }}
+                        document.getElementById('deleteBtn').disabled = false;
+                    }}
+                }};
+
+                deleteXhr.onerror = function() {{
+                    showDeleteMessage('网络错误，删除失败', 'error');
+                    document.getElementById('deleteBtn').disabled = false;
+                }};
+
+                deleteXhr.send(JSON.stringify(data));
             }}
 
             function getCurrentPath() {{
@@ -389,7 +529,21 @@ template = """
                     infoSpan.className = 'file-info';
                     var sizeSpan = document.createElement('span');
                     sizeSpan.textContent = formatSize(file.size);
+                    
+                    var deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.textContent = '删除';
+                    deleteBtn.dataset.filePath = file.path;
+                    deleteBtn.dataset.fileSha = file.sha;
+                    deleteBtn.dataset.fileName = file.name;
+                    deleteBtn.onclick = function(e) {{
+                        e.stopPropagation();
+                        e.preventDefault();
+                        openDeleteModal(this.dataset.filePath, this.dataset.fileSha, this.dataset.fileName);
+                    }};
+                    
                     infoSpan.appendChild(sizeSpan);
+                    infoSpan.appendChild(deleteBtn);
                     entry.appendChild(nameSpan);
                     entry.appendChild(infoSpan);
                     container.appendChild(entry);
