@@ -164,12 +164,13 @@ template = """
             }
             input[type="file"] {
                 width: 100%;
-                padding: 10px;
+                padding: 12px;
                 border: 2px dashed #ddd;
-                border-radius: 8px;
+                border-radius: 15px;
                 background: rgba(245, 245, 245, 0.9);
                 cursor: pointer;
                 transition: all 0.3s;
+                font-size: 14px;
             }
             input[type="file"]:hover {
                 border-color: #2c82c9;
@@ -257,10 +258,9 @@ template = """
             <div style="margin: 20px 0;">
                 <a href="../" style="font-size: 1.1em;">上级目录</a>
                 <button class="upload-btn" id="open-upload-btn" style="margin-left: 20px; border: none;">上传文件</button>
+                <button class="btn" id="refresh-btn" style="margin-left: 10px; padding: 6px 12px; font-size: 14px;">刷新列表</button>
             </div>
             <div id="file-list-container">FILECONTENT</div>
-            <hr>
-            <a style="text-decoration: none; color: #34495e; font-size: 15px; font-weight: 400;" href="https://beian.miit.gov.cn/#/Integrated/recordQuery" target="_blank">闽ICP备2025107306号-1</a>
         </div>
 
         <div class="modal-overlay" id="upload-modal">
@@ -268,21 +268,7 @@ template = """
                 <a href="#" class="modal-close" id="modal-close">&times;</a>
                 <h1>文件上传</h1>
                 
-                <div class="login-section" id="login-section">
-                    <h3>管理员登录</h3>
-                    <div class="form-group">
-                        <label for="admin-user">用户名</label>
-                        <input type="text" id="admin-user" placeholder="输入用户名">
-                    </div>
-                    <div class="form-group">
-                        <label for="admin-pass">密码</label>
-                        <input type="password" id="admin-pass" placeholder="输入密码">
-                    </div>
-                    <button class="btn" id="login-btn">登录</button>
-                    <div class="message" id="login-error"></div>
-                </div>
-
-                <div id="upload-form" style="display: none;">
+                <div id="upload-form">
                     <div class="form-group">
                         <label for="file-input">选择文件</label>
                         <input type="file" id="file-input" accept="*">
@@ -325,13 +311,7 @@ template = """
             const modalOverlay = document.getElementById('upload-modal');
             const openUploadBtn = document.getElementById('open-upload-btn');
             const modalClose = document.getElementById('modal-close');
-
-            const loginSection = document.getElementById('login-section');
             const uploadForm = document.getElementById('upload-form');
-            const adminUser = document.getElementById('admin-user');
-            const adminPass = document.getElementById('admin-pass');
-            const loginBtn = document.getElementById('login-btn');
-            const loginError = document.getElementById('login-error');
 
             const fileInput = document.getElementById('file-input');
             const fileName = document.getElementById('file-name');
@@ -344,6 +324,7 @@ template = """
             const progressText = document.getElementById('progress-text');
             const successMessage = document.getElementById('success-message');
             const errorMessage = document.getElementById('error-message');
+            const refreshBtn = document.getElementById('refresh-btn');
 
             function openModal() {
                 modalOverlay.classList.add('show');
@@ -353,10 +334,6 @@ template = """
             function closeModal() {
                 modalOverlay.classList.remove('show');
                 document.body.style.overflow = '';
-                loginSection.style.display = 'block';
-                uploadForm.style.display = 'none';
-                adminUser.value = '';
-                adminPass.value = '';
                 resetForm();
             }
 
@@ -371,27 +348,11 @@ template = """
                 }
             });
 
-            function showLoginError(msg) {
-                loginError.textContent = msg;
-                loginError.className = 'message error';
-                loginError.style.display = 'block';
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    fetchFileListFromGitHub();
+                });
             }
-
-            function hideLoginError() {
-                loginError.style.display = 'none';
-            }
-
-            loginBtn.addEventListener('click', function() {
-                const user = adminUser.value.trim();
-                const pass = adminPass.value.trim();
-                if (user === ADMIN_USER && pass === ADMIN_PASS) {
-                    hideLoginError();
-                    loginSection.style.display = 'none';
-                    uploadForm.style.display = 'block';
-                } else {
-                    showLoginError('用户名或密码错误');
-                }
-            });
 
             fileInput.addEventListener('change', function(e) {
                 if (e.target.files.length > 0) {
@@ -436,9 +397,9 @@ template = """
 
             function refreshFileList(filePath) {
                 successMessage.textContent = '上传成功！正在刷新文件列表...';
-                fetchFileListFromGitHub();
                 setTimeout(function() {
-                    successMessage.textContent = '上传成功！文件列表已更新。';
+                    closeModal();
+                    fetchFileListFromGitHub();
                 }, 1000);
             }
 
