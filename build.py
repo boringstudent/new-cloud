@@ -318,6 +318,10 @@ template = """
                 <span class="modal-close" onclick="closePreviewModal()">&times;</span>
                 <h2 id="previewTitle">预览文件</h2>
                 <div id="previewContent"></div>
+                <div id="previewActions" style="margin-top: 15px; display: none;">
+                    <button class="btn" onclick="savePreviewFile()" id="savePreviewBtn" style="width: 100%;">保存修改</button>
+                    <div id="previewMessage" class="message"></div>
+                </div>
             </div>
         </div>
 
@@ -333,6 +337,7 @@ template = """
             var DEFAULT_BRANCH = '{default_branch}';
 
             var menuFileInfo = {{}};
+            var previewFileInfo = {{}};
 
             setInterval(function() {{
                 loadFileList();
@@ -454,6 +459,12 @@ template = """
                 var ext = getFileExtension(fileName);
                 var previewUrl = 'https://raw.githubusercontent.com/' + REPO_OWNER + '/' + REPO_NAME + '/' + DEFAULT_BRANCH + '/' + encodeURI(filePath);
                 
+                previewFileInfo = {{
+                    path: filePath,
+                    name: fileName,
+                    ext: ext
+                }};
+                
                 document.getElementById('previewTitle').textContent = '预览: ' + fileName;
                 var content = document.getElementById('previewContent');
                 content.innerHTML = '';
@@ -462,6 +473,9 @@ template = """
                 loadingDiv.textContent = '加载中...';
                 content.appendChild(loadingDiv);
                 document.getElementById('previewModal').classList.add('show');
+                document.getElementById('previewActions').style.display = 'none';
+                document.getElementById('previewMessage').className = 'message';
+                document.getElementById('previewMessage').textContent = '';
                 
                 if (['mp3', 'wav', 'ogg', 'aac', 'flac'].indexOf(ext) !== -1) {{
                     content.innerHTML = '';
@@ -477,7 +491,7 @@ template = """
                     video.controls = true;
                     video.className = 'preview-video';
                     content.appendChild(video);
-                }} else if (['txt', 'json', 'md', 'log', 'xml', 'html', 'js', 'css', 'py', 'java', 'cpp', 'c', 'h', 'php'].indexOf(ext) !== -1) {{
+                }} else {{
                     var xhr = new XMLHttpRequest();
                     xhr.open('GET', previewUrl, true);
                     xhr.onload = function() {{
@@ -485,9 +499,10 @@ template = """
                             var textarea = document.createElement('textarea');
                             textarea.className = 'preview-text';
                             textarea.value = xhr.responseText;
-                            textarea.readOnly = true;
+                            textarea.readOnly = false;
                             content.innerHTML = '';
                             content.appendChild(textarea);
+                            document.getElementById('previewActions').style.display = 'block';
                         }} else {{
                             content.innerHTML = '';
                             var msgDiv = document.createElement('div');
@@ -504,23 +519,130 @@ template = """
                         content.appendChild(msgDiv);
                     }};
                     xhr.send();
-                }} else {{
-                    content.innerHTML = '';
-                    var loadingDiv = document.createElement('div');
-                    loadingDiv.className = 'loading';
-                    loadingDiv.textContent = '不支持该类型文件的预览';
-                    var link = document.createElement('a');
-                    link.href = previewUrl;
-                    link.target = '_blank';
-                    link.textContent = '点击下载';
-                    content.appendChild(loadingDiv);
-                    content.appendChild(document.createElement('br'));
-                    content.appendChild(link);
                 }}
             }}
 
             function closePreviewModal() {{
                 document.getElementById('previewModal').classList.remove('show');
+            }}
+
+            function showPreviewMessage(text, type) {{
+                var msg = document.getElementById('previewMessage');
+                msg.className = 'message ' + type;
+                msg.textContent = text;
+            }}
+
+            function savePreviewFile() {{
+                var textarea = document.querySelector('.preview-text');
+                if (!textarea) return;
+                
+                var newContent = textarea.value;
+                var saveBtn = document.getElementById('savePreviewBtn');
+                
+                saveBtn.disabled = true;
+                showPreviewMessage('正在获取授权...', 'success');
+                
+                var username = prompt('请输入用户名:');
+                var password = prompt('请输入密码:');
+                
+                if (!username || !password) {{
+                    showPreviewMessage('请输入用户名和密码', 'error');
+                    saveBtn.disabled = false;
+                    return;
+                }}
+                
+                var params = 'username=' + encodeURIComponent(username) + '&password=' + encodeURIComponent(password);
+                var keyUrl = 'https://api.boring-student.cn/?' + params;
+                
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', keyUrl, true);
+                xhr.onload = function() {{
+                    if (xhr.status === 200) {{
+                        try {{
+                            var response = JSON.parse(xhr.responseText);
+                            if (response.success && response.key) {{
+                                updateFileOnGitHub(response.key, previewFileInfo.path, newContent);
+                            }} else {{
+                                showPreviewMessage('获取授权失败', 'error');
+                                saveBtn.disabled = false;
+                            }}
+                        }} catch (e) {{
+                            showPreviewMessage('解析授权响应失败', 'error');
+                            saveBtn.disabled = false;
+                        }}
+                    }} else {{
+                        showPreviewMessage('获取授权失败，状态码: ' + xhr.status, 'error');
+                        saveBtn.disabled = false;
+                    }}
+                }};
+                xhr.onerror = function() {{
+                    showPreviewMessage('网络错误，无法获取授权', 'error');
+                    saveBtn.disabled = false;
+                }};
+                xhr.send();
+            }}
+
+            function updateFileOnGitHub(key, filePath, newContent) {{
+                var shaUrl = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(filePath);
+                var shaXhr = new XMLHttpRequest();
+                shaXhr.open('GET', shaUrl, true);
+                shaXhr.onload = function() {{
+                    if (shaXhr.status === 200) {{
+                        try {{
+                            var fileInfo = JSON.parse(shaXhr.responseText);
+                            var sha = fileInfo.sha;
+                            var base64Content = btoa(unescape(encodeURIComponent(newContent)));
+                            
+                            var data = {{
+                                message: 'Update file: ' + filePath,
+                                content: base64Content,
+                                sha: sha
+                            }};
+                            
+                            var updateXhr = new XMLHttpRequest();
+                            var updateUrl = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/contents/' + encodeURI(filePath);
+                            updateXhr.open('PUT', updateUrl, true);
+                            updateXhr.setRequestHeader('Authorization', 'Bearer ' + key);
+                            updateXhr.setRequestHeader('Content-Type', 'application/json');
+                            
+                            updateXhr.onload = function() {{
+                                if (updateXhr.status === 200 || updateXhr.status === 201) {{
+                                    showPreviewMessage('保存成功！', 'success');
+                                    setTimeout(function() {{
+                                        closePreviewModal();
+                                        loadFileList();
+                                    }}, 1500);
+                                }} else {{
+                                    try {{
+                                        var error = JSON.parse(updateXhr.responseText);
+                                        showPreviewMessage('保存失败: ' + (error.message || '未知错误'), 'error');
+                                    }} catch (e) {{
+                                        showPreviewMessage('保存失败，状态码: ' + updateXhr.status, 'error');
+                                    }}
+                                    document.getElementById('savePreviewBtn').disabled = false;
+                                }}
+                            }};
+                            
+                            updateXhr.onerror = function() {{
+                                showPreviewMessage('网络错误，保存失败', 'error');
+                                document.getElementById('savePreviewBtn').disabled = false;
+                            }};
+                            
+                            updateXhr.send(JSON.stringify(data));
+                        }} catch (e) {{
+                            showPreviewMessage('获取文件信息失败', 'error');
+                            document.getElementById('savePreviewBtn').disabled = false;
+                        }}
+                    }} else {{
+                        showPreviewMessage('获取文件信息失败，状态码: ' + shaXhr.status, 'error');
+                        document.getElementById('savePreviewBtn').disabled = false;
+                    }}
+                }};
+                shaXhr.onerror = function() {{
+                    showPreviewMessage('网络错误，无法获取文件信息', 'error');
+                    document.getElementById('savePreviewBtn').disabled = false;
+                }};
+                shaXhr.send();
             }}
 
             function confirmDelete() {{
