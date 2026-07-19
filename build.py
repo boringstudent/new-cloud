@@ -842,7 +842,7 @@ template = """
 
                     var link = document.createElement('a');
                     link.href = currentPath + '/';
-                    link.textContent = parts[i];
+                    link.textContent = decodeURIComponent(parts[i]);
                     crumbs.appendChild(link);
                 }}
             }}
@@ -861,6 +861,14 @@ template = """
                     if (xhr.status === 200) {{
                         try {{
                             var items = JSON.parse(xhr.responseText);
+                            var currentPath = getCurrentPath();
+                            var pageTitle = document.getElementById('pageTitle');
+                            if (currentPath === '') {{
+                                pageTitle.textContent = 'Home';
+                            }} else {{
+                                var pathParts = currentPath.split('/');
+                                pageTitle.textContent = decodeURIComponent(pathParts[pathParts.length - 1]);
+                            }}
                             renderFileList(items);
                         }} catch (e) {{
                             container.innerHTML = '<div class="message error">解析文件列表失败</div>';
