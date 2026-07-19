@@ -571,9 +571,10 @@ def format_size(size):
 
 def copy_files(source_dir, output_dir):
     exclude_dir = os.path.basename(output_dir)
+    exclude_files = {'build.py', 'upload.yml'}
     for root, dirs, files in os.walk(source_dir):
         dirs[:] = [d for d in dirs if not d.startswith('.') and d != exclude_dir]
-        files = [f for f in files if not f.startswith('.')]
+        files = [f for f in files if not f.startswith('.') and f not in exclude_files]
 
         rel_path = os.path.relpath(root, source_dir)
         dest_dir = os.path.join(output_dir, rel_path)
