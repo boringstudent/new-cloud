@@ -7,6 +7,7 @@ import shutil
 GITHUB_APIKEY = os.environ.get('APIKEY', '')
 
 REPO_NAME = os.environ.get('REPO_NAME', '')
+print('DEBUG - REPO_NAME:', repr(REPO_NAME))
 
 GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
 REPO_OWNER = ''
@@ -19,6 +20,8 @@ STORAGE_DIR = ''
 if '/' in REPO_NAME:
     STORAGE_REPO_OWNER, STORAGE_REPO_NAME = REPO_NAME.split('/', 1)
     STORAGE_DIR = STORAGE_REPO_NAME
+print('DEBUG - STORAGE_REPO_OWNER:', repr(STORAGE_REPO_OWNER))
+print('DEBUG - STORAGE_REPO_NAME:', repr(STORAGE_REPO_NAME))
 
 ADMIN_CREDENTIALS = os.environ.get('ADMIN', '')
 ADMIN_USER = ''
@@ -509,7 +512,7 @@ template = """
                     return;
                 }
 
-                if (!GITHUB_APIKEY || !REPO_OWNER || !REPO_NAME) {
+                if (!GITHUB_APIKEY || !STORAGE_REPO_OWNER || !STORAGE_REPO_NAME) {
                     showError('系统配置未完成');
                     return;
                 }
