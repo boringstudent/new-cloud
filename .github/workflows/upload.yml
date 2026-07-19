@@ -7,7 +7,7 @@ on:
         description: '目标文件路径'
         required: true
       file_content_base64:
-        description: '文件内容（Base64编码）'
+        description: '文件内容(Base64编码)'
         required: true
       commit_message:
         description: '提交信息'
