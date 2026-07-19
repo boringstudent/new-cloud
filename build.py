@@ -309,52 +309,30 @@ template = """
                 font-size: 12px;
                 color: #666;
             }}
-            .file-list {{
-                max-height: 180px;
-                overflow-y: auto;
-                margin: 12px 0;
-                background: #111;
-                border-radius: 8px;
-                padding: 8px;
-            }}
-            .file-list-item {{
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 6px 10px;
-                border-radius: 4px;
-                font-size: 13px;
-                color: #c9d1d9;
-            }}
-            .file-list-item:hover {{
-                background: #21262d;
-            }}
-            .file-list-item .fl-name {{
-                flex: 1;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }}
-            .file-list-item .fl-size {{
-                color: #8b949e;
-                font-size: 11px;
-                margin-left: 12px;
-                white-space: nowrap;
-            }}
-            .file-list-item .fl-remove {{
-                color: #f85149;
-                cursor: pointer;
-                margin-left: 8px;
-                font-size: 16px;
-                opacity: 0.7;
-            }}
-            .file-list-item .fl-remove:hover {{
-                opacity: 1;
-            }}
             .upload-actions {{
                 display: flex;
-                gap: 8px;
-                flex-wrap: wrap;
+                gap: 12px;
+                margin: 16px 0 12px;
+            }}
+            .upload-actions .btn {{
+                flex: 1;
+                font-size: 14px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                background: #21262d;
+                border: 1px solid #30363d;
+                color: #c9d1d9;
+                cursor: pointer;
+                transition: all 0.2s;
+            }}
+            .upload-actions .btn:hover {{
+                background: #30363d;
+                border-color: #58a6ff;
+                color: #58a6ff;
             }}
             .folder-preview-list {{
                 max-height: 350px;
@@ -410,10 +388,9 @@ template = """
                 <div class="upload-actions">
                     <input type="file" id="fileInput" multiple style="display:none;">
                     <input type="file" id="folderInput" webkitdirectory style="display:none;">
-                    <button class="btn" onclick="document.getElementById('fileInput').click()" style="flex:1;">选择文件</button>
-                    <button class="btn" onclick="document.getElementById('folderInput').click()" style="flex:1;">选择文件夹</button>
+                    <button class="btn" onclick="document.getElementById('fileInput').click()">&#128196; 选择文件</button>
+                    <button class="btn" onclick="document.getElementById('folderInput').click()">&#128193; 选择文件夹</button>
                 </div>
-                <div class="file-list" id="fileList" style="display:none;"></div>
                 <div class="progress-container" style="display: none;">
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill"></div>
@@ -486,7 +463,7 @@ template = """
 
         <div id="contextMenu" class="context-menu">
             <div class="context-menu-item" id="ctx-preview" onclick="handleMenuAction('preview')">预览</div>
-            <div class="context-menu-item" id="ctx-edit" onclick="handleMenuAction('edit')">修改</div>
+            <div class="context-menu-item" id="ctx-edit" onclick="handleMenuAction('edit')">重命名</div>
             <div class="context-menu-item" id="ctx-download" onclick="handleMenuAction('download')">下载</div>
             <div class="context-menu-item" id="ctx-properties" onclick="handleMenuAction('properties')">属性</div>
             <div class="context-menu-item danger" id="ctx-delete" onclick="handleMenuAction('delete')">删除</div>
@@ -507,7 +484,6 @@ template = """
             function openUploadModal() {{
                 document.getElementById('uploadModal').classList.add('show');
                 uploadFileList = [];
-                renderFileList();
                 initDropZone();
             }}
 
@@ -522,7 +498,6 @@ template = """
                 document.getElementById('fileInput').value = '';
                 document.getElementById('folderInput').value = '';
                 uploadFileList = [];
-                renderFileList();
             }}
 
             var uploadFileList = [];
@@ -597,31 +572,6 @@ template = """
                 if (exists) return;
                 file._displayPath = displayPath;
                 uploadFileList.push(file);
-                renderFileList();
-            }}
-
-            function removeFileFromList(index) {{
-                uploadFileList.splice(index, 1);
-                renderFileList();
-            }}
-
-            function renderFileList() {{
-                var fl = document.getElementById('fileList');
-                if (uploadFileList.length === 0) {{
-                    fl.style.display = 'none';
-                    fl.innerHTML = '';
-                    return;
-                }}
-                fl.style.display = 'block';
-                var html = '';
-                uploadFileList.forEach(function(f, i) {{
-                    html += '<div class="file-list-item">';
-                    html += '<span class="fl-name" title="' + (f._displayPath || f.name) + '">' + (f._displayPath || f.name) + '</span>';
-                    html += '<span class="fl-size">' + formatSize(f.size) + '</span>';
-                    html += '<span class="fl-remove" onclick="event.stopPropagation();removeFileFromList(' + i + ')" title="移除">&times;</span>';
-                    html += '</div>';
-                }});
-                fl.innerHTML = html;
             }}
 
             function showMessage(text, type) {{
@@ -677,7 +627,6 @@ template = """
                 var isDir = fileInfo.type === 'dir';
                 document.getElementById('ctx-preview').style.display = '';
                 document.getElementById('ctx-edit').style.display = '';
-                document.getElementById('ctx-edit').textContent = isDir ? '重命名' : '修改';
                 document.getElementById('ctx-download').style.display = '';
                 document.getElementById('ctx-properties').style.display = '';
                 document.getElementById('ctx-delete').style.display = '';
@@ -728,7 +677,7 @@ template = """
                     if (action === 'preview') {{
                         previewFile(filePath, fileName);
                     }} else if (action === 'edit') {{
-                        editFile(filePath, fileName);
+                        showRenameModal(filePath, fileName, 'file');
                     }} else if (action === 'download') {{
                         downloadFile(filePath, fileName);
                     }} else if (action === 'properties') {{
